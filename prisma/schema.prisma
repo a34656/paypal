@@ -1,0 +1,344 @@
+// AEGIS data model — PostgreSQL only.
+// Money: every authoritative amount is an integer in minor units (Int). No floats, no Decimal.
+// Constraints that Prisma cannot express (partial unique indexes, append-only triggers) live in
+// the hand-written SQL of migration `0002_constraints_and_triggers`.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Mode {
+  DEMO
+  SANDBOX
+  LIVE
+}
+
+enum Role {
+  REQUESTER
+  APPROVER
+}
+
+enum WorkflowStatus {
+  CREATED
+  PARSED
+  CONFIRMED
+  SCOUTING
+  SCOUTED
+  RISK_ANALYSIS
+  OPTIMIZING
+  POLICY_EVALUATION
+  AWAITING_APPROVAL
+  BLOCKED
+  READY_FOR_CHECKOUT
+  FAILED
+  EXPIRED
+  DENIED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  NOT_STARTED
+  PENDING_APPROVAL
+  APPROVED
+  ORDER_CREATED
+  CHECKOUT_PENDING
+  CAPTURE_PENDING
+  CAPTURED
+  CAPTURE_PROVIDER_PENDING
+  FAILED
+  CANCELLED
+  BLOCKED
+  EXPIRED
+  REFUNDED
+  DISPUTED
+}
+
+enum ApprovalStatus {
+  ACTIVE
+  CONSUMED
+  EXPIRED
+  REVOKED
+  INVALIDATED
+}
+
+/// AUTHORIZATION: owner confirmed an ALLOW_CHECKOUT purchase.
+/// APPROVER_APPROVAL: a user holding the APPROVER role approved a REQUIRE_APPROVAL purchase.
+enum ApprovalKind {
+  AUTHORIZATION
+  APPROVER_APPROVAL
+}
+
+enum PolicyDecision {
+  ALLOW_CHECKOUT
+  REQUIRE_APPROVAL
+  BLOCK
+}
+
+enum SellerVerification {
+  VERIFIED
+  UNVERIFIED
+  UNKNOWN
+}
+
+enum AgentRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  /// Demo identity: the signed session id issued by the proxy. Not a real login.
+  demoIdentity String   @unique
+  displayName  String
+  roles        Role[]
+  createdAt    DateTime @default(now())
+
+  missions  Mission[]
+  policies  Policy[]
+  approvals Approval[]
+}
+
+model Mission {
+  id                   String         @id @default(cuid())
+  ownerId              String
+  owner                User           @relation(fields: [ownerId], references: [id])
+  title                String
+  description          String
+  rawInputText         String
+  /// Proposal from the parser (LLM or deterministic). Display only until confirmed.
+  parsedProposal       Json?
+  parserSource         String?
+  /// The only structured object the engines ever see. Set by the user via /confirm.
+  confirmedConstraints Json?
+  budgetMinor          Int?
+  currency             String?
+  quantity             Int?
+  status               WorkflowStatus @default(CREATED)
+  version              Int            @default(0)
+  mode                 Mode
+  policyVersion        Int?
+  decision             PolicyDecision?
+  recommendedProductId String?
+  /// Display-only explanation (deterministic, or LLM text rendered as plain text).
+  recommendationSummary String?
+  recommendationSource  String?
+  llmCalls             Int            @default(0)
+  failureReason        String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  products  MissionProduct[]
+  approvals Approval[]
+  payments  Payment[]
+  agentRuns AgentRun[]
+
+  @@index([ownerId, createdAt])
+  @@index([status])
+}
+
+model Product {
+  id                       String             @id @default(cuid())
+  provider                 String
+  providerProductId        String
+  title                    String
+  description              String?
+  category                 String
+  unitPriceMinor           Int
+  shippingMinor            Int?
+  taxMinor                 Int?
+  currency                 String
+  imageUrl                 String?
+  sellerId                 String?
+  sellerName               String?
+  sellerVerificationStatus SellerVerification @default(UNKNOWN)
+  /// Delivery estimate in days, null when the seller did not disclose one.
+  shippingEstimateDays     Int?
+  stockQuantity            Int?
+  attributes               Json
+  isDemoData               Boolean
+  metadata                 Json?
+  createdAt                DateTime           @default(now())
+
+  missions MissionProduct[]
+
+  @@unique([provider, providerProductId])
+}
+
+model MissionProduct {
+  id                   String          @id @default(cuid())
+  missionId            String
+  mission              Mission         @relation(fields: [missionId], references: [id])
+  productId            String
+  product              Product         @relation(fields: [productId], references: [id])
+  quantity             Int
+  /// All-in total (unit*qty + shipping + tax). Null when shipping or tax is unknown.
+  totalMinor           Int?
+  /// 0 = lowest risk, 100 = highest. trustScore is derived (100 - riskScore) in presentation only.
+  riskScore            Int?
+  riskLevel            String?
+  evidenceCoverage     Int?
+  riskEvidence         Json?
+  eligible             Boolean?
+  ineligibleReasons    Json?
+  recommendationRank   Int?
+  optimizerScore       Int?
+  optimizerExplanation String?
+  policyDecision       PolicyDecision?
+  policyResult         Json?
+  createdAt            DateTime        @default(now())
+
+  @@unique([missionId, productId])
+}
+
+/// Append-only (DB trigger rejects UPDATE/DELETE). A change inserts a new version.
+model Policy {
+  id            String   @id @default(cuid())
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id])
+  version       Int
+  configuration Json
+  createdAt     DateTime @default(now())
+  createdBy     String
+
+  @@unique([ownerId, version])
+}
+
+model Approval {
+  id                  String         @id @default(cuid())
+  missionId           String
+  mission             Mission        @relation(fields: [missionId], references: [id])
+  productId           String
+  approvedById        String
+  approvedBy          User           @relation(fields: [approvedById], references: [id])
+  kind                ApprovalKind
+  decisionAtApproval  PolicyDecision
+  snapshot            Json
+  snapshotHash        String
+  approvedAmountMinor Int
+  currency            String
+  policyVersion       Int
+  /// Duplicate-purchase fingerprint: sha256(ownerId, providerProductId, quantity, totalMinor, currency).
+  fingerprint         String
+  status              ApprovalStatus @default(ACTIVE)
+  statusReason        String?
+  version             Int            @default(0)
+  createdAt           DateTime       @default(now())
+  expiresAt           DateTime
+  updatedAt           DateTime       @updatedAt
+
+  payments Payment[]
+
+  // Partial unique index "one ACTIVE approval per mission" is in SQL migration 0002.
+  @@index([missionId, status])
+  @@index([fingerprint, createdAt])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  missionId         String
+  mission           Mission       @relation(fields: [missionId], references: [id])
+  productId         String
+  approvalId        String
+  approval          Approval      @relation(fields: [approvalId], references: [id])
+  provider          String
+  mode              Mode
+  providerOrderId   String?       @unique
+  providerCaptureId String?
+  providerStatus    String?
+  amountMinor       Int
+  shippingMinor     Int
+  taxMinor          Int
+  itemTotalMinor    Int
+  currency          String
+  status            PaymentStatus
+  statusReason      String?
+  /// Used as PayPal-Request-Id for order creation. Persisted before the provider call.
+  idempotencyKey    String        @unique
+  /// Used as PayPal-Request-Id for capture. Persisted before the provider call.
+  captureRequestId  String        @unique
+  invoiceId         String        @unique
+  requestIds        Json          @default("[]")
+  version           Int           @default(0)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Partial unique index "at most one live payment per mission" is in SQL migration 0002.
+  @@index([missionId, status])
+}
+
+/// Stand-in provider state for DEMO mode (no PayPal credentials). Never shown as a real payment.
+model SimulatedOrder {
+  id          String   @id
+  paymentId   String   @unique
+  status      String
+  payload     Json
+  captureId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model WebhookEvent {
+  id              String    @id @default(cuid())
+  providerEventId String    @unique
+  type            String
+  receivedAt      DateTime  @default(now())
+  processedAt     DateTime?
+  result          String?
+}
+
+model AgentRun {
+  id            String         @id @default(cuid())
+  missionId     String
+  mission       Mission        @relation(fields: [missionId], references: [id])
+  agentType     String
+  step          String
+  status        AgentRunStatus
+  lockedUntil   DateTime?
+  attempt       Int            @default(0)
+  inputSummary  Json?
+  outputSummary Json?
+  error         String?
+  durationMs    Int?
+  startedAt     DateTime       @default(now())
+  completedAt   DateTime?
+
+  @@unique([missionId, step])
+  @@index([agentType, startedAt])
+}
+
+/// Append-only (DB trigger rejects UPDATE/DELETE), hash-chained.
+model AuditEvent {
+  id            String   @id @default(cuid())
+  seq           Int      @unique
+  missionId     String?
+  ownerId       String?
+  actor         String
+  eventType     String
+  resource      String
+  outcome       String
+  correlationId String
+  metadata      Json
+  schemaVersion Int
+  mode          Mode
+  prevHash      String
+  hash          String   @unique
+  createdAt     DateTime
+
+  @@index([missionId, seq])
+  @@index([ownerId, seq])
+  @@index([eventType])
+}
+
+model RateLimitBucket {
+  key         String
+  windowStart DateTime
+  count       Int
+
+  @@id([key, windowStart])
+}

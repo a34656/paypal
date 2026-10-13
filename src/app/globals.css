@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/* AEGIS design tokens — premium financial-intelligence control room. */
+@theme {
+  --color-bg: #05070b;
+  --color-bg-2: #090d14;
+  --color-elevated: #0d1420;
+  --color-line: #1a2433;
+  --color-line-strong: #263347;
+  --color-fg: #f3f7fb;
+  --color-muted: #8b9aaf;
+  --color-cyan: #56e0f0;
+  --color-blue: #6685ff;
+  --color-purple: #a78bfa;
+  --color-success: #43d9a3;
+  --color-warning: #f4bb61;
+  --color-critical: #ff647c;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-panel: 10px;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1, "cv11" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle grid texture used behind the shell. */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgb(86 224 240 / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(86 224 240 / 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.glow-cyan {
+  box-shadow: 0 0 0 1px rgb(86 224 240 / 0.25), 0 0 24px -8px rgb(86 224 240 / 0.45);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: rgb(102 133 255 / 0.35);
+}
+
+/* Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes aegis-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.animate-aegis-pulse {
+  animation: aegis-pulse 2.4s ease-in-out infinite;
+}
+
+/* AG Grid theme bridge */
+.aegis-grid {
+  --ag-background-color: var(--color-bg-2);
+  --ag-foreground-color: var(--color-fg);
+  --ag-header-background-color: var(--color-elevated);
+  --ag-header-text-color: var(--color-muted);
+  --ag-border-color: var(--color-line);
+  --ag-row-hover-color: rgb(86 224 240 / 0.05);
+  --ag-selected-row-background-color: rgb(102 133 255 / 0.14);
+  --ag-font-family: var(--font-sans);
+  --ag-font-size: 13px;
+  --ag-accent-color: var(--color-cyan);
+}
