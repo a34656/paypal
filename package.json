@@ -21,6 +21,10 @@
     "test:e2e": "playwright test",
     "postinstall": "prisma generate"
   },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0",
+    "glob": "^11.0.0"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
     "@paypal/react-paypal-js": "^10.6.0",
@@ -61,7 +65,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "dotenv": "^18.0.7",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "^16.4.0",
     "jsdom": "^30.1.2",
     "prisma": "^7.10.0",
     "tailwindcss": "^4",
