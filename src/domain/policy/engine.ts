@@ -31,13 +31,21 @@ export interface PolicySnapshot {
   unitPriceMinor: number;
   shippingMinor: number | null;
   taxMinor: number | null;
-  /** All-in total; null when it cannot be determined (unknown shipping/tax). */
+  /** All-in total, or the spending cap when amountBasis is CAP; null when neither can be stated. */
   totalMinor: number | null;
+  /** EXACT = fully disclosed total. CAP = upper bound (item total + allowance) enforced by an authorization hold. */
+  amountBasis?: "EXACT" | "CAP" | null;
+  /** The allowance inside a CAP total (for explanations). */
+  allowanceMinor?: number | null;
   category: string;
   sellerVerification: SellerVerification;
   riskScore: number | null;
   evidenceCoverage: number | null;
   requirementMismatch: boolean | null;
+  /** Mission-level risk ceiling (tightens policy only). */
+  missionMaxRiskScore?: number | null;
+  /** Prompt-injection signals found in the listing text by the risk engine. */
+  injectionSignals?: string[];
 }
 
 export interface PolicyContext {
@@ -103,11 +111,14 @@ export function evaluate(snapshot: PolicySnapshot, policy: PolicyConfig, context
   );
 
   const totalKnown = snapshot.totalMinor !== null;
+  const capped = totalKnown && snapshot.amountBasis === "CAP";
   add(
     "floor.total_known",
-    "All-in total is known",
+    capped ? "Maximum amount is bounded" : "All-in total is known",
     totalKnown ? "PASS" : "BLOCK",
-    totalKnown
+    capped
+      ? "Shipping/tax are undisclosed, but the most that can ever be charged is fixed by a spending cap."
+      : totalKnown
       ? "Unit price × quantity + shipping + tax is fully determined."
       : `Cannot authorise an amount that cannot be stated: ${[
           snapshot.shippingMinor === null ? "shipping" : null,
@@ -127,6 +138,17 @@ export function evaluate(snapshot: PolicySnapshot, policy: PolicyConfig, context
     true,
   );
 
+  const injected = (snapshot.injectionSignals ?? []).length > 0;
+  add(
+    "floor.untrusted_content",
+    "No instructions in listing text",
+    injected ? "BLOCK" : "PASS",
+    injected
+      ? `Listing text tries to instruct the purchasing agent (${(snapshot.injectionSignals ?? []).join(", ")}). Untrusted content never steers AEGIS; the offer is blocked.`
+      : "Listing text contains no agent-directed instructions.",
+    true,
+  );
+
   const budgetWithinPolicy = snapshot.missionBudgetMinor <= policy.maxMissionBudgetMinor;
   add(
     "floor.mission_budget_cap",
@@ -137,6 +159,19 @@ export function evaluate(snapshot: PolicySnapshot, policy: PolicyConfig, context
       : `Mission budget ${fmt(snapshot.missionBudgetMinor, snapshot.missionCurrency)} exceeds the policy cap ${fmt(policy.maxMissionBudgetMinor, policy.currency)}. Mission text cannot raise limits.`,
     true,
   );
+
+  if (capped) {
+    // Not configurable: a capped amount can never be auto-approved.
+    add(
+      "floor.spend_cap",
+      "Spending cap needs a human",
+      "REQUIRE_APPROVAL",
+      `Seller did not disclose shipping/tax. AEGIS will request a PayPal authorization hold of at most ${fmt(snapshot.totalMinor as number, snapshot.missionCurrency)}${
+        snapshot.allowanceMinor != null ? ` (includes a ${fmt(snapshot.allowanceMinor, snapshot.missionCurrency)} allowance)` : ""
+      }; an approver must sign off, and the final amount is settled later from the real invoice.`,
+      true,
+    );
+  }
 
   // ---------------------------------------------------------------- CONFIGURABLE
   const total = snapshot.totalMinor;
@@ -231,6 +266,15 @@ export function evaluate(snapshot: PolicySnapshot, policy: PolicyConfig, context
         ? `Risk ${risk} exceeds the maximum ${maxRisk} (trust ${100 - risk} < minimum ${policy.minTrustScore}).`
         : `Trust ${100 - risk} ≥ minimum ${policy.minTrustScore}.`,
     );
+    if (snapshot.missionMaxRiskScore != null) {
+      const ceiling = snapshot.missionMaxRiskScore;
+      add(
+        "mission.risk_tolerance",
+        "Mission risk tolerance",
+        risk > ceiling ? "BLOCK" : "PASS",
+        risk > ceiling ? `Risk ${risk} exceeds this mission's tolerance (max ${ceiling}).` : `Risk ${risk} is within this mission's tolerance (max ${ceiling}).`,
+      );
+    }
     add(
       "risk.approval",
       "Risk approval threshold",

@@ -10,6 +10,7 @@ import { escapeCsvCell } from "@/lib/csv";
 import { formatTime } from "@/lib/client/format";
 import { PageHeader } from "@/components/shell/page-header";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
+import { Input } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { ModeBadge, StatusBadge } from "@/components/ui/badge";
 import { ErrorState, Spinner } from "@/components/ui/states";
@@ -18,16 +19,23 @@ import { ErrorState, Spinner } from "@/components/ui/states";
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 const aegisTheme = themeQuartz.withPart(colorSchemeDark).withParams({
-  backgroundColor: "#090D14",
-  foregroundColor: "#F3F7FB",
-  headerBackgroundColor: "#0D1420",
-  headerTextColor: "#8B9AAF",
-  borderColor: "#1A2433",
-  rowHoverColor: "rgba(86,224,240,0.05)",
-  selectedRowBackgroundColor: "rgba(102,133,255,0.14)",
-  accentColor: "#56E0F0",
+  backgroundColor: "#0B0D12",
+  foregroundColor: "#F2EEE6",
+  headerBackgroundColor: "#0B0D12",
+  headerTextColor: "#8B93A2",
+  headerFontFamily: "var(--font-mono)",
+  headerFontSize: 10.5,
+  borderColor: "#1A1E27",
+  rowBorder: { color: "#14171f" },
+  wrapperBorder: false,
+  rowHoverColor: "rgba(111,227,238,0.04)",
+  selectedRowBackgroundColor: "rgba(134,168,255,0.1)",
+  accentColor: "#6FE3EE",
   fontFamily: "inherit",
-  fontSize: 13,
+  fontSize: 12.5,
+  rowHeight: 40,
+  headerHeight: 38,
+  spacing: 7,
 });
 
 export interface TxRow {
@@ -56,10 +64,11 @@ export function TransactionsView() {
   const { data, error, isLoading, mutate } = useApi<{ rows: TxRow[] }>("/api/transactions");
   const grid = useRef<AgGridReact<TxRow>>(null);
   const [selected, setSelected] = useState<TxRow | null>(null);
+  const [quick, setQuick] = useState("");
 
   const columns = useMemo<ColDef<TxRow>[]>(
     () => [
-      { field: "kind", headerName: "Type", width: 110, filter: true },
+      { field: "id", headerName: "Transaction ID", width: 150, filter: true, cellClass: "font-mono text-[11.5px]", valueFormatter: (p) => (p.data?.kind === "PROPOSAL" ? "— (proposal)" : String(p.value).slice(0, 14)) },
       {
         field: "missionTitle",
         headerName: "Mission",
@@ -68,14 +77,17 @@ export function TransactionsView() {
         filter: true,
         cellRenderer: (p: ICellRendererParams<TxRow>) => (p.data ? <Link href={`/missions/${p.data.missionId}`} className="hover:text-cyan">{p.value}</Link> : null),
       },
+      { field: "amountMinor", headerName: "Amount", width: 130, type: "rightAligned", cellClass: "font-mono", filter: "agNumberColumnFilter", valueFormatter: (p) => formatMoney(p.value, p.data?.currency) },
+      { field: "currency", headerName: "Cur", width: 80, filter: true, cellClass: "font-mono" },
+      { field: "status", headerName: "Status", width: 190, filter: true, cellRenderer: (p: ICellRendererParams<TxRow>) => <StatusBadge status={p.value} /> },
+      { field: "mode", headerName: "Mode", width: 160, filter: true, cellRenderer: (p: ICellRendererParams<TxRow>) => <ModeBadge mode={p.value} simulated={p.data?.simulated} /> },
+      { field: "decision", headerName: "Policy", width: 170, filter: true, cellRenderer: (p: ICellRendererParams<TxRow>) => (p.value ? <StatusBadge status={p.value} /> : "—") },
       { field: "product", headerName: "Product", flex: 1.2, minWidth: 180, filter: true },
       { field: "seller", headerName: "Seller", flex: 1, minWidth: 160, filter: true },
-      { field: "amountMinor", headerName: "Amount", width: 130, type: "rightAligned", filter: "agNumberColumnFilter", valueFormatter: (p) => formatMoney(p.value, p.data?.currency) },
-      { field: "status", headerName: "Status", width: 190, filter: true, cellRenderer: (p: ICellRendererParams<TxRow>) => <StatusBadge status={p.value} /> },
-      { field: "decision", headerName: "Policy", width: 170, filter: true, cellRenderer: (p: ICellRendererParams<TxRow>) => (p.value ? <StatusBadge status={p.value} /> : "—") },
       { field: "riskScore", headerName: "Risk", width: 90, filter: "agNumberColumnFilter" },
-      { field: "mode", headerName: "Mode", width: 160, filter: true, cellRenderer: (p: ICellRendererParams<TxRow>) => <ModeBadge mode={p.value} simulated={p.data?.simulated} /> },
-      { field: "providerOrderId", headerName: "Provider order", width: 170, filter: true },
+      { field: "kind", headerName: "Type", width: 110, filter: true },
+      { field: "provider", headerName: "Provider", width: 120, filter: true, valueFormatter: (p) => (p.value === "simulated" ? "simulated" : p.value ?? "—") },
+      { field: "providerOrderId", headerName: "Provider order", width: 170, filter: true, cellClass: "font-mono text-[11.5px]" },
       { field: "createdAt", headerName: "Created", width: 170, sort: "desc", valueFormatter: (p) => formatTime(p.value) },
     ],
     [],
@@ -101,6 +113,7 @@ export function TransactionsView() {
         }
       />
       <ErrorState error={error} retry={() => mutate()} />
+      <Input aria-label="Search transactions" placeholder="Search mission, product, seller, status, order id…" value={quick} onChange={(e) => setQuick(e.target.value)} className="max-w-md" />
       <Panel className="overflow-hidden">
         {isLoading ? (
           <Spinner className="p-6" />
@@ -111,6 +124,7 @@ export function TransactionsView() {
               theme={aegisTheme}
               rowData={data?.rows ?? []}
               columnDefs={columns}
+              quickFilterText={quick}
               defaultColDef={{ sortable: true, resizable: true }}
               pagination
               paginationPageSize={25}
@@ -118,7 +132,7 @@ export function TransactionsView() {
               rowSelection={{ mode: "singleRow", enableClickSelection: true }}
               onSelectionChanged={(e) => setSelected(e.api.getSelectedRows()[0] ?? null)}
               getRowId={(p) => p.data.id}
-              overlayNoRowsTemplate="<span style='color:#8B9AAF'>No transactions yet. Run a mission to create one.</span>"
+              overlayNoRowsTemplate="<span style='color:#8B93A2'>No transactions yet. Run a mission to create one.</span>"
             />
           </div>
         )}

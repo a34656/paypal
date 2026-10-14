@@ -3,6 +3,19 @@ import { currencySchema, minorSchema, positiveMinorSchema } from "@/domain/types
 
 const weight = z.number().int().min(0).max(100);
 
+export const DEFAULT_TRUSTED_SELLER_DOMAINS = [
+  "bestbuy.com",
+  "bhphotovideo.com",
+  "cdw.com",
+  "dell.com",
+  "lenovo.com",
+  "microcenter.com",
+  "newegg.com",
+  "staples.com",
+  "adafruit.com",
+  "sparkfun.com",
+];
+
 export const optimizerWeightsSchema = z.object({
   cost: weight,
   budget: weight,
@@ -40,6 +53,20 @@ export const policyConfigSchema = z
     duplicateWindowHours: z.number().int().min(0).max(24 * 90),
     duplicateAction: z.enum(["REQUIRE_APPROVAL", "BLOCK"]),
     optimizerWeights: optimizerWeightsSchema,
+    /**
+     * Retailer domains the operator trusts (e.g. "bestbuy.com"). Offers from these domains
+     * count as VERIFIED sellers. Real catalogues do not verify sellers themselves.
+     */
+    trustedSellerDomains: z
+      .array(z.string().trim().toLowerCase().regex(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, "Must be a domain like bestbuy.com").max(80))
+      .max(100)
+      .default(DEFAULT_TRUSTED_SELLER_DOMAINS),
+    /**
+     * When a seller does not disclose shipping/tax, AEGIS may authorise a SPENDING CAP of
+     * item total + this % instead of blocking. The cap is enforced by a PayPal authorization
+     * hold and always needs approver sign-off. 0 = never (undisclosed totals BLOCK).
+     */
+    costAllowancePct: z.number().int().min(0).max(50).default(15),
   })
   .refine((p) => p.maxPurchaseMinor <= p.maxMissionBudgetMinor, {
     message: "Max individual purchase cannot exceed max mission budget",
@@ -76,6 +103,8 @@ export const DEFAULT_POLICY: PolicyConfig = {
   duplicateWindowHours: 24,
   duplicateAction: "REQUIRE_APPROVAL",
   optimizerWeights: { cost: 30, budget: 15, compatibility: 25, delivery: 15, seller: 15 },
+  trustedSellerDomains: DEFAULT_TRUSTED_SELLER_DOMAINS,
+  costAllowancePct: 15,
 };
 
 type LimitKey =
@@ -85,7 +114,8 @@ type LimitKey =
   | "approvalThresholdMinor"
   | "minEvidenceCoverage"
   | "minTrustScore"
-  | "approvalRiskScore";
+  | "approvalRiskScore"
+  | "costAllowancePct";
 
 /** Direction in which raising a numeric setting makes the policy looser. */
 const LOOSER_WHEN_HIGHER: Record<LimitKey, boolean> = {
@@ -96,6 +126,7 @@ const LOOSER_WHEN_HIGHER: Record<LimitKey, boolean> = {
   minEvidenceCoverage: false,
   minTrustScore: false,
   approvalRiskScore: true,
+  costAllowancePct: true,
 };
 
 /** Flags where `true` is the stricter setting. */
@@ -155,6 +186,13 @@ export function diffPolicies(before: PolicyConfig, after: PolicyConfig): PolicyC
   };
   setDiff("allowedCategories");
   setDiff("blockedCategories");
+  {
+    const a = [...before.trustedSellerDomains].sort().join(",");
+    const b = [...after.trustedSellerDomains].sort().join(",");
+    if (a !== b) {
+      changes.push({ field: "trustedSellerDomains", before: before.trustedSellerDomains, after: after.trustedSellerDomains, loosens: after.trustedSellerDomains.some((d) => !before.trustedSellerDomains.includes(d)) });
+    }
+  }
   const wb = JSON.stringify(before.optimizerWeights);
   const wa = JSON.stringify(after.optimizerWeights);
   if (wb !== wa) changes.push({ field: "optimizerWeights", before: before.optimizerWeights, after: after.optimizerWeights, loosens: false });

@@ -11,8 +11,8 @@ import { cn } from "@/lib/client/cn";
 
 /** Categorical slots validated (CVD + normal-vision + contrast) against the #090D14 chart surface. */
 const SERIES = ["#3987e5", "#d95926", "#199e70"] as const;
-const STATUS = { LOW: "#43D9A3", MEDIUM: "#F4BB61", HIGH: "#FF8A5C", CRITICAL: "#FF647C" } as const;
-const AXIS = { stroke: "#263347", tick: { fill: "#8B9AAF", fontSize: 11 } };
+const STATUS = { LOW: "#52D3A3", MEDIUM: "#F2B45A", HIGH: "#FF8A5C", CRITICAL: "#FF5D6C" } as const;
+const AXIS = { stroke: "#272C37", tick: { fill: "#8B93A2", fontSize: 11 } };
 
 interface ModeStats {
   missions: number;
@@ -20,6 +20,11 @@ interface ModeStats {
   proposedMinor: number;
   approvedMinor: number;
   capturedMinor: number;
+  heldMinor: number;
+  refundedMinor: number;
+  budgetMinor: number;
+  budgetBuckets: Record<string, number>;
+  paymentStatus: Record<string, number>;
   blocked: number;
   pendingApprovals: number;
   spendByCategory: Record<string, number>;
@@ -77,11 +82,13 @@ function ChartPanel({ title, source, children, table }: { title: string; source:
   );
 }
 
-const tooltipStyle = { contentStyle: { background: "#0D1420", border: "1px solid #263347", borderRadius: 6, fontSize: 12, color: "#F3F7FB" }, labelStyle: { color: "#F3F7FB" }, itemStyle: { color: "#F3F7FB" }, cursor: { fill: "rgba(86,224,240,0.06)" } };
+const tooltipStyle = { contentStyle: { background: "#10131A", border: "1px solid #272C37", borderRadius: 6, fontSize: 12, color: "#F2EEE6" }, labelStyle: { color: "#F2EEE6" }, itemStyle: { color: "#F2EEE6" }, cursor: { fill: "rgba(111,227,238,0.06)" } };
 
 export function AnalyticsView() {
   const { data, error, isLoading, mutate } = useApi<Analytics>("/api/analytics", { refreshInterval: 15_000 });
-  const [mode, setMode] = useState<"DEMO" | "SANDBOX">("DEMO");
+  const { data: session } = useApi<{ mode: "DEMO" | "SANDBOX" | "LIVE" }>("/api/session");
+  const [picked, setMode] = useState<"DEMO" | "SANDBOX" | null>(null);
+  const mode: "DEMO" | "SANDBOX" = picked ?? (session?.mode === "SANDBOX" ? "SANDBOX" : "DEMO");
   if (error) return <ErrorState error={error} retry={() => mutate()} />;
   if (isLoading || !data) return <Spinner />;
 
@@ -91,8 +98,17 @@ export function AnalyticsView() {
   const spend = [
     { name: "Proposed", value: m.proposedMinor },
     { name: "Approved", value: m.approvedMinor },
+    { name: "On hold", value: m.heldMinor },
     { name: "Captured", value: m.capturedMinor },
   ];
+  const sumOutcome = (keys: string[]) => keys.reduce((s, k) => s + (m.outcomes[k] ?? 0), 0);
+  const approvedMissions = sumOutcome(["READY_FOR_CHECKOUT", "CHECKOUT_IN_PROGRESS", "CAPTURE_PENDING", "HOLD_PLACED", "COMPLETED", "REFUNDED", "DISPUTED"]);
+  const failedMissions = sumOutcome(["FAILED"]);
+  const completedMissions = sumOutcome(["COMPLETED", "REFUNDED"]);
+  const budgets = Object.entries(m.budgetBuckets ?? {}).map(([name, value]) => ({ name, value }));
+  const payStatus = Object.entries(m.paymentStatus ?? {})
+    .map(([k, v]) => ({ name: k.replace(/_/g, " ").toLowerCase(), value: v }))
+    .sort((a, b) => b.value - a.value);
   const outcomes = Object.entries(m.outcomes).map(([k, v]) => ({ name: k.replace(/_/g, " ").toLowerCase(), value: v }));
   const risk = (["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const).map((k) => ({ name: k.toLowerCase(), key: k, value: data.riskDistribution[k] ?? 0 }));
   const agents = Object.entries(data.agentActivity).map(([k, v]) => ({ name: k, ...v }));
@@ -119,11 +135,14 @@ export function AnalyticsView() {
         <Badge tone={mode === "DEMO" ? "purple" : "blue"}>{mode === "DEMO" ? "Simulated data" : "Sandbox data"}</Badge>
         {mode === "DEMO" ? "Simulated volume is not money processed." : "Sandbox volume is PayPal test money, not real funds."}
       </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         {[
           ["Missions", m.missions, "default"],
+          ["Approved", approvedMissions, "cyan"],
           ["Pending approvals", m.pendingApprovals, m.pendingApprovals ? "warning" : "default"],
           ["Blocked", m.blocked, m.blocked ? "critical" : "default"],
+          ["Failed", failedMissions, failedMissions ? "critical" : "default"],
+          ["Completed", completedMissions, "success"],
           ["Approved spend", formatMoney(m.approvedMinor, cur), "cyan"],
           [capturedLabel, formatMoney(m.capturedMinor, cur), "success"],
         ].map(([label, value, tone]) => (
@@ -139,7 +158,7 @@ export function AnalyticsView() {
         <ChartPanel title="Proposed vs approved vs captured" source={`${mode === "DEMO" ? "simulated" : "PayPal Sandbox"} records, ${cur}`} table={{ head: ["Stage", "Amount"], rows: spend.map((s) => [s.name, formatMoney(s.value, cur)]) }}>
           <ResponsiveContainer>
             <BarChart data={spend.map((s) => ({ ...s, major: major(s.value) }))} barCategoryGap="30%">
-              <CartesianGrid stroke="#1A2433" vertical={false} />
+              <CartesianGrid stroke="#1A1E27" vertical={false} />
               <XAxis dataKey="name" {...AXIS} />
               <YAxis {...AXIS} width={70} tickFormatter={(v: number) => `$${v.toLocaleString()}`} />
               <Tooltip {...tooltipStyle} formatter={(_v, _n, p) => [formatMoney((p.payload as { value: number }).value, cur), "Amount"]} />
@@ -154,7 +173,7 @@ export function AnalyticsView() {
           ) : (
             <ResponsiveContainer>
               <BarChart data={outcomes} layout="vertical" margin={{ left: 40 }}>
-                <CartesianGrid stroke="#1A2433" horizontal={false} />
+                <CartesianGrid stroke="#1A1E27" horizontal={false} />
                 <XAxis type="number" allowDecimals={false} {...AXIS} />
                 <YAxis type="category" dataKey="name" width={130} {...AXIS} />
                 <Tooltip {...tooltipStyle} />
@@ -164,10 +183,10 @@ export function AnalyticsView() {
           )}
         </ChartPanel>
 
-        <ChartPanel title="Risk distribution of evaluated offers" source="deterministic risk engine over demo evidence (all modes)" table={{ head: ["Risk level", "Offers"], rows: risk.map((r) => [r.name, r.value]) }}>
+        <ChartPanel title="Risk distribution of evaluated offers" source="deterministic risk engine over provider evidence (all modes)" table={{ head: ["Risk level", "Offers"], rows: risk.map((r) => [r.name, r.value]) }}>
           <ResponsiveContainer>
             <BarChart data={risk}>
-              <CartesianGrid stroke="#1A2433" vertical={false} />
+              <CartesianGrid stroke="#1A1E27" vertical={false} />
               <XAxis dataKey="name" {...AXIS} />
               <YAxis allowDecimals={false} {...AXIS} width={40} />
               <Tooltip {...tooltipStyle} />
@@ -180,19 +199,51 @@ export function AnalyticsView() {
           </ResponsiveContainer>
         </ChartPanel>
 
+        <ChartPanel title="Budget distribution" source={data.sources.budget ?? "confirmed mission budgets"} table={{ head: ["Budget", "Missions"], rows: budgets.map((b) => [b.name, b.value]) }}>
+          {budgets.every((b) => b.value === 0) ? (
+            <p className="text-sm text-muted">No confirmed budgets in this mode yet.</p>
+          ) : (
+            <ResponsiveContainer>
+              <BarChart data={budgets}>
+                <CartesianGrid stroke="#1A1E27" vertical={false} />
+                <XAxis dataKey="name" {...AXIS} />
+                <YAxis allowDecimals={false} {...AXIS} width={40} />
+                <Tooltip {...tooltipStyle} />
+                <Bar dataKey="value" name="Missions" fill={SERIES[0]} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
+
+        <ChartPanel title="Transaction status" source={data.sources.paymentStatus ?? "payment records"} table={{ head: ["Status", "Payments"], rows: payStatus.map((p) => [p.name, p.value]) }}>
+          {payStatus.length === 0 ? (
+            <p className="text-sm text-muted">No payments in this mode yet.</p>
+          ) : (
+            <ResponsiveContainer>
+              <BarChart data={payStatus} layout="vertical" margin={{ left: 40 }}>
+                <CartesianGrid stroke="#1A1E27" horizontal={false} />
+                <XAxis type="number" allowDecimals={false} {...AXIS} />
+                <YAxis type="category" dataKey="name" width={130} {...AXIS} />
+                <Tooltip {...tooltipStyle} />
+                <Bar dataKey="value" name="Payments" fill={SERIES[0]} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartPanel>
+
         <ChartPanel title="Agent activity" source="AgentRun records (all modes)" table={{ head: ["Agent", "Completed", "Failed", "Running"], rows: agents.map((a) => [a.name, a.completed, a.failed, a.running]) }}>
           {agents.length === 0 ? (
             <p className="text-sm text-muted">No agent runs yet.</p>
           ) : (
             <ResponsiveContainer>
               <BarChart data={agents}>
-                <CartesianGrid stroke="#1A2433" vertical={false} />
+                <CartesianGrid stroke="#1A1E27" vertical={false} />
                 <XAxis dataKey="name" {...AXIS} />
                 <YAxis allowDecimals={false} {...AXIS} width={40} />
                 <Tooltip {...tooltipStyle} />
-                <Legend wrapperStyle={{ fontSize: 11, color: "#8B9AAF" }} />
-                <Bar dataKey="completed" name="Completed" stackId="a" fill={SERIES[0]} stroke="#090D14" strokeWidth={2} />
-                <Bar dataKey="failed" name="Failed (retried or final)" stackId="a" fill={SERIES[1]} stroke="#090D14" strokeWidth={2} radius={[4, 4, 0, 0]} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#8B93A2" }} />
+                <Bar dataKey="completed" name="Completed" stackId="a" fill={SERIES[0]} stroke="#0B0D12" strokeWidth={2} />
+                <Bar dataKey="failed" name="Failed (retried or final)" stackId="a" fill={SERIES[1]} stroke="#0B0D12" strokeWidth={2} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -204,7 +255,7 @@ export function AnalyticsView() {
           ) : (
             <ResponsiveContainer>
               <BarChart data={categories.map((c) => ({ ...c, major: major(c.value) }))}>
-                <CartesianGrid stroke="#1A2433" vertical={false} />
+                <CartesianGrid stroke="#1A1E27" vertical={false} />
                 <XAxis dataKey="name" {...AXIS} />
                 <YAxis {...AXIS} width={70} tickFormatter={(v: number) => `$${v.toLocaleString()}`} />
                 <Tooltip {...tooltipStyle} formatter={(_v, _n, p) => [formatMoney((p.payload as { value: number }).value, cur), "Captured"]} />

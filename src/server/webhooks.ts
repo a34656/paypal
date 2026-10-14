@@ -37,9 +37,17 @@ export async function processWebhookEvent(db: Db, event: unknown, gateway: Payme
   const resource = obj(e.resource);
   let result: WebhookResult;
   try {
-    if (type.startsWith("PAYMENT.CAPTURE.")) {
+    if (type.startsWith("PAYMENT.CAPTURE.") || type.startsWith("PAYMENT.AUTHORIZATION.")) {
+      // Captures, refunds (PAYMENT.CAPTURE.REFUNDED) and authorization holds all resolve to the
+      // order; AEGIS applies the re-fetched order, never the event body.
       const related = obj(obj(resource.supplementary_data).related_ids);
-      const payment = await findPaymentForProviderRef(db, { customId: str(resource.custom_id), orderId: str(related.order_id), captureId: str(resource.id) });
+      const isAuth = type.startsWith("PAYMENT.AUTHORIZATION.");
+      const payment = await findPaymentForProviderRef(db, {
+        customId: str(resource.custom_id),
+        orderId: str(related.order_id),
+        captureId: isAuth ? null : (str(related.capture_id) ?? str(resource.id)),
+        authorizationId: isAuth ? str(resource.id) : str(related.authorization_id),
+      });
       if (!payment || !payment.providerOrderId) {
         result = { status: "ignored", detail: "no matching payment" };
       } else {

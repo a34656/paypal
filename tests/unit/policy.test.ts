@@ -35,6 +35,46 @@ describe("policy engine", () => {
     expect(r.reasons.at(-1)).toMatch(/human must still authorise/);
   });
 
+  it("a spending cap can never be auto-approved, even for a small, perfect purchase", () => {
+    const capped: PolicySnapshot = { ...smallSnap, shippingMinor: null, taxMinor: null, totalMinor: 37_375, amountBasis: "CAP", allowanceMinor: 4_875 };
+    const r = evaluate(capped, policy(), ctx);
+    expect(r.decision).toBe("REQUIRE_APPROVAL");
+    const cap = r.checks.find((c) => c.id === "floor.spend_cap")!;
+    expect(cap).toMatchObject({ result: "REQUIRE_APPROVAL", floor: true });
+    expect(r.checks.find((c) => c.id === "floor.total_known")?.result).toBe("PASS");
+    // The cap (not the item total) is what the budget checks see.
+    expect(evaluate({ ...capped, missionBudgetMinor: 37_000 }, policy(), ctx).decision).toBe("BLOCK");
+  });
+
+  it("an unknown total without a cap still BLOCKs", () => {
+    const r = evaluate({ ...base, shippingMinor: null, totalMinor: null }, policy(), ctx);
+    expect(r.decision).toBe("BLOCK");
+    expect(r.checks.find((c) => c.id === "floor.total_known")?.result).toBe("BLOCK");
+  });
+
+  it("agent-directed instructions in listing text BLOCK at the floor", () => {
+    const r = evaluate({ ...smallSnap, injectionSignals: ["approval directive"] }, policy({ minEvidenceCoverage: 0 }), ctx);
+    expect(r.decision).toBe("BLOCK");
+    expect(r.checks.find((c) => c.id === "floor.untrusted_content")).toMatchObject({ result: "BLOCK", floor: true });
+  });
+
+  it("raising the allowance or trusting a new retailer is flagged as loosening", () => {
+    const changes = diffPolicies(DEFAULT_POLICY, { ...DEFAULT_POLICY, costAllowancePct: 25, trustedSellerDomains: [...DEFAULT_POLICY.trustedSellerDomains, "random-shop.example"] });
+    expect(changes.find((c) => c.field === "costAllowancePct")?.loosens).toBe(true);
+    expect(changes.find((c) => c.field === "trustedSellerDomains")?.loosens).toBe(true);
+    expect(diffPolicies(DEFAULT_POLICY, { ...DEFAULT_POLICY, costAllowancePct: 0 }).find((c) => c.field === "costAllowancePct")?.loosens).toBe(false);
+  });
+
+  it("stored policies from before the new fields parse with safe defaults", () => {
+    const { trustedSellerDomains: _t, costAllowancePct: _c, ...legacy } = DEFAULT_POLICY;
+    void _t;
+    void _c;
+    const parsed = policyConfigSchema.parse(legacy);
+    expect(parsed.costAllowancePct).toBe(15);
+    expect(parsed.trustedSellerDomains).toContain("bestbuy.com");
+    expect(() => policyConfigSchema.parse({ ...DEFAULT_POLICY, trustedSellerDomains: ["not a domain"] })).toThrow();
+  });
+
   it("requires approval above the approval threshold", () => {
     const r = evaluate(base, policy(), ctx);
     expect(r.decision).toBe("REQUIRE_APPROVAL");
@@ -140,5 +180,16 @@ describe("policy schema & diff", () => {
     expect(d.find((c) => c.field === "minTrustScore")?.loosens).toBe(false);
     expect(d.find((c) => c.field === "blockedCategories")?.loosens).toBe(true);
     expect(diffPolicies(DEFAULT_POLICY, DEFAULT_POLICY)).toEqual([]);
+  });
+});
+
+describe("mission risk tolerance", () => {
+  it("can only tighten: blocks above the mission ceiling, never loosens the policy maximum", () => {
+    const p = { ...DEFAULT_POLICY };
+    expect(evaluate({ ...smallSnap, riskScore: 32, missionMaxRiskScore: 30 }, p, ctx).decision).toBe("BLOCK");
+    expect(evaluate({ ...smallSnap, riskScore: 28, missionMaxRiskScore: 30 }, p, ctx).checks.find((c) => c.id === "mission.risk_tolerance")?.result).toBe("PASS");
+    // A ceiling above the policy maximum does not let a policy-blocked risk through.
+    expect(evaluate({ ...smallSnap, riskScore: 70, missionMaxRiskScore: 90 }, p, ctx).decision).toBe("BLOCK");
+    expect(evaluate({ ...smallSnap, riskScore: 70 }, p, ctx).checks.some((c) => c.id === "mission.risk_tolerance")).toBe(false);
   });
 });

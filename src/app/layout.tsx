@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: "AI can act. AEGIS makes sure it acts responsibly. Governance, policy and human control between AI commerce agents and PayPal.",
 };
 
-export const viewport: Viewport = { themeColor: "#05070B" };
+export const viewport: Viewport = { themeColor: "#050608" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

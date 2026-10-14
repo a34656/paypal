@@ -11,8 +11,8 @@ async function launch(page: Page, scenario: "robotics-lab" | "gpu-servers" | "us
 
 test("landing → demo mission → risk → approve → simulated checkout → transactions → read-only replay", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /LET AI MOVE MONEY/ })).toBeVisible();
-  await page.getByRole("link", { name: "Explore a Demo Mission" }).click();
+  await expect(page.getByRole("heading", { name: /INTELLIGENCE IN MOTION/ })).toBeVisible();
+  await page.getByRole("link", { name: "Run a demo mission" }).click();
   await expect(page.getByLabel("Describe the purchasing mission")).toHaveValue(/Raspberry Pi/);
 
   await page.getByRole("button", { name: "Parse mission" }).click();
@@ -33,7 +33,7 @@ test("landing → demo mission → risk → approve → simulated checkout → t
 
   // Human approval of the exact purchase.
   await page.getByRole("checkbox", { name: /I reviewed this exact purchase/ }).check();
-  await page.getByRole("button", { name: "Approve exact purchase" }).click();
+  await page.getByRole("button", { name: "Approve this purchase" }).click();
   await expect(page.getByText("Simulated checkout (DEMO MODE — PayPal not connected)")).toBeVisible();
 
   // Capture is refused before (simulated) buyer approval; then runs both gates.

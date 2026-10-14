@@ -8,7 +8,7 @@ import { casMission } from "./cas";
 import type { Db } from "./db";
 import { AppError, notFound } from "./errors";
 import { actorOf } from "./users";
-import { getAiProvider } from "./ai/anthropic";
+import { getAiProvider } from "./ai/gemini";
 
 export const MAX_LLM_CALLS_PER_MISSION = 3;
 
@@ -168,7 +168,7 @@ export async function missionDetail(db: Db, user: User, missionId: string) {
   const [products, approvals, payments, runs] = await Promise.all([
     db.missionProduct.findMany({ where: { missionId }, include: { product: true }, orderBy: [{ recommendationRank: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }] }),
     db.approval.findMany({ where: { missionId }, orderBy: { createdAt: "desc" }, include: { approvedBy: { select: { displayName: true, roles: true } } } }),
-    db.payment.findMany({ where: { missionId }, orderBy: { createdAt: "desc" } }),
+    db.payment.findMany({ where: { missionId }, orderBy: { createdAt: "desc" }, include: { refunds: { orderBy: { createdAt: "asc" } } } }),
     db.agentRun.findMany({ where: { missionId }, orderBy: { startedAt: "asc" } }),
   ]);
   const livePayment = payments.find((p) => PAYMENT_LIVE.includes(p.status)) ?? payments[0] ?? null;

@@ -64,7 +64,7 @@ export function ReplayPanel({ events, products }: { events: MissionEvent[]; prod
         </label>
         <label className="flex min-w-[200px] flex-1 items-center gap-2 text-xs text-muted">
           <span className="sr-only">Replay position</span>
-          <input type="range" min={0} max={total} value={index} onChange={(e) => setIndex(Number(e.target.value))} className="w-full accent-[#56E0F0]" data-testid="replay-scrubber" />
+          <input type="range" min={0} max={total} value={index} onChange={(e) => setIndex(Number(e.target.value))} className="w-full accent-[#6FE3EE]" data-testid="replay-scrubber" />
           <span className="w-14 text-right font-mono">
             {index}/{total}
           </span>

@@ -56,6 +56,13 @@ enum PaymentStatus {
   EXPIRED
   REFUNDED
   DISPUTED
+  /// Authorization call in flight (AUTHORIZE intent).
+  AUTHORIZE_PENDING
+  /// Authorization hold placed at PayPal for a capped amount; settled later by a human.
+  AUTHORIZED
+  /// Capture of the human-entered final amount against the authorization is in flight.
+  SETTLE_PENDING
+  PARTIALLY_REFUNDED
 }
 
 enum ApprovalStatus {
@@ -189,6 +196,10 @@ model MissionProduct {
   recommendationRank   Int?
   optimizerScore       Int?
   optimizerExplanation String?
+  /// EXACT = all-in total fully disclosed. CAP = shipping/tax undisclosed; totalMinor is an
+  /// upper bound (item total + policy allowance) that a PayPal authorization hold enforces.
+  amountBasis          String?
+  allowanceMinor       Int?
   policyDecision       PolicyDecision?
   policyResult         Json?
   createdAt            DateTime        @default(now())
@@ -255,7 +266,17 @@ model Payment {
   shippingMinor     Int
   taxMinor          Int
   itemTotalMinor    Int
+  /// Upper-bound allowance for undisclosed shipping/tax (CAP purchases). amount = item + shipping + tax + allowance.
+  allowanceMinor    Int           @default(0)
   currency          String
+  /// CAPTURE = exact amount captured at once. AUTHORIZE = hold for the cap, settled later (≤ cap).
+  intent            String        @default("CAPTURE")
+  providerAuthorizationId String?
+  authorizationExpiresAt  DateTime?
+  /// Final amount entered by a human at settlement (AUTHORIZE intent only). Persisted before the provider call.
+  settledMinor      Int?
+  settleRequestId   String?       @unique
+  refundedMinor     Int           @default(0)
   status            PaymentStatus
   statusReason      String?
   /// Used as PayPal-Request-Id for order creation. Persisted before the provider call.
@@ -268,8 +289,31 @@ model Payment {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
+  refunds Refund[]
+
   // Partial unique index "at most one live payment per mission" is in SQL migration 0002.
   @@index([missionId, status])
+}
+
+/// A refund request against a captured payment. The row (and its PayPal-Request-Id) is
+/// persisted BEFORE the provider call, so retries are idempotent at PayPal.
+model Refund {
+  id               String   @id @default(cuid())
+  paymentId        String
+  payment          Payment  @relation(fields: [paymentId], references: [id])
+  amountMinor      Int
+  currency         String
+  reason           String
+  requestedById    String
+  requestId        String   @unique
+  providerRefundId String?  @unique
+  /// PENDING (before/at provider), COMPLETED, FAILED, PROVIDER_PENDING
+  status           String
+  statusReason     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([paymentId, createdAt])
 }
 
 /// Stand-in provider state for DEMO mode (no PayPal credentials). Never shown as a real payment.

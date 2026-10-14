@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { CheckCircle2, Plus, Trash2 } from "lucide-react";
-import { CURRENCIES } from "@/domain/types";
+import { CURRENCIES, RISK_TOLERANCE } from "@/domain/types";
 import { parseMajorInput, toProviderDecimal } from "@/lib/money";
 import { apiFetch, ApiError } from "@/lib/client/api";
 import { Button } from "@/components/ui/button";
@@ -21,17 +21,29 @@ interface Proposal {
   uncertain?: string[];
 }
 
+/** Values typed into the structured composer; they pre-fill (never bypass) this confirmation. */
+export interface ComposerDraft {
+  quantity?: number;
+  budget?: string;
+  currency?: string;
+  deadlineDays?: number | null;
+  tolerance?: string;
+}
+
 /** Structured confirmation form. Only what the user confirms here becomes the mission. */
-export function ConfirmForm({ missionId, proposal, parserSource, onDone }: { missionId: string; proposal: Proposal; parserSource: string | null; onDone: () => void }) {
+export function ConfirmForm({ missionId, proposal, parserSource, onDone, draft }: { missionId: string; proposal: Proposal; parserSource: string | null; onDone: () => void; draft?: ComposerDraft }) {
   const uncertain = new Set(proposal.uncertain ?? []);
+  if (draft?.quantity) uncertain.delete("quantity");
+  if (draft?.budget) uncertain.delete("budgetMinor");
   const [title, setTitle] = useState(proposal.title);
   const [objective, setObjective] = useState(proposal.objective);
   const [productQuery, setProductQuery] = useState(proposal.productQuery);
   const [category, setCategory] = useState(proposal.category);
-  const [quantity, setQuantity] = useState(String(proposal.quantity));
-  const [currency, setCurrency] = useState(proposal.currency);
-  const [budget, setBudget] = useState(toProviderDecimal(proposal.budgetMinor, proposal.currency));
-  const [deadline, setDeadline] = useState(proposal.deadlineDays == null ? "" : String(proposal.deadlineDays));
+  const [quantity, setQuantity] = useState(String(draft?.quantity ?? proposal.quantity));
+  const [currency, setCurrency] = useState(draft?.currency && (CURRENCIES as readonly string[]).includes(draft.currency) ? draft.currency : proposal.currency);
+  const [budget, setBudget] = useState(draft?.budget ?? toProviderDecimal(proposal.budgetMinor, proposal.currency));
+  const [deadline, setDeadline] = useState(draft?.deadlineDays != null ? String(draft.deadlineDays) : proposal.deadlineDays == null ? "" : String(proposal.deadlineDays));
+  const [tolerance, setTolerance] = useState<string>(RISK_TOLERANCE.some((t) => t.id === draft?.tolerance) ? (draft?.tolerance as string) : "policy");
   const [attrs, setAttrs] = useState<[string, string][]>(Object.entries(proposal.requiredAttributes));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -60,6 +72,7 @@ export function ConfirmForm({ missionId, proposal, parserSource, onDone }: { mis
             currency,
             deadlineDays: deadline === "" ? null : Number(deadline),
             requiredAttributes: Object.fromEntries(attrs.filter(([k, v]) => k.trim() && v.trim())),
+            maxRiskScore: RISK_TOLERANCE.find((t) => t.id === tolerance)?.maxRiskScore ?? null,
           },
         },
       });
@@ -82,7 +95,7 @@ export function ConfirmForm({ missionId, proposal, parserSource, onDone }: { mis
       className="space-y-4"
       aria-label="Confirm parsed mission constraints"
     >
-      <p className="rounded-md border border-blue/30 bg-blue/5 px-3 py-2 text-xs text-blue">
+      <p className="rounded-[4px] border border-blue/25 bg-blue/[0.05] px-3 py-2 text-xs text-blue">
         Parsed by <strong>{parserSource === "llm" ? "the LLM" : "the deterministic demo parser"}</strong>. This is a proposal: review and edit every field. Raw text never reaches the policy engine.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -110,6 +123,15 @@ export function ConfirmForm({ missionId, proposal, parserSource, onDone }: { mis
         </Field>
         <Field label="Delivery deadline (days, optional)" htmlFor="c-deadline">
           <Input id="c-deadline" type="number" min={1} max={365} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+        </Field>
+        <Field label="Risk tolerance" htmlFor="c-tol" hint={`${RISK_TOLERANCE.find((t) => t.id === tolerance)?.hint} Can only tighten your policy.`}>
+          <Select id="c-tol" value={tolerance} onChange={(e) => setTolerance(e.target.value)}>
+            {RISK_TOLERANCE.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </Select>
         </Field>
       </div>
       <Field label="Objective" htmlFor="c-obj">

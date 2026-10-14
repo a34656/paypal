@@ -1,7 +1,9 @@
 "use client";
 /**
- * AEGIS network scene. Renders ONLY from MissionViewModel (or nothing, when idle). Particles
- * travel along a connection only when a recorded event made that node active — never fabricated.
+ * AEGIS agent network. Renders ONLY from MissionViewModel (recorded events) and persisted
+ * product rows. Nothing here runs on timers to imply work: particles spawn for a new recorded
+ * event, candidate nodes exist only once Scout has stored them, and they move to ranked slots
+ * only once the Optimizer has stored ranks. It never decides anything.
  */
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -9,33 +11,32 @@ import { Line, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { MissionViewModel, NodeId } from "@/domain/viewmodel/reducer";
-import { NODE_META_2D } from "./node-meta";
+import { NODE_META_2D, nodeState, type AgentNode, type NodeVisualState } from "./node-meta";
+import { statusText } from "./scene-status";
 
-export const NODE_POS: Record<NodeId, [number, number, number]> = {
+export { statusText };
+
+export const AGENT_NODES: AgentNode[] = ["scout", "risk", "optimizer", "policy", "paypal"];
+
+export const NODE_POS: Record<AgentNode | "core" | "gate", [number, number, number]> = {
   core: [0, 0, 0],
-  interpreter: [-3.4, 1.5, 0],
-  scout: [-2.6, -1.7, 0.8],
-  risk: [0, 2.7, -0.8],
-  optimizer: [2.6, -1.7, 0.8],
-  policy: [3.4, 1.5, 0],
-  human: [0, -2.45, 0.4],
-  paypal: [4.9, -0.5, -0.8],
+  scout: [-3.7, 0.9, 0.3],
+  risk: [-1.7, 2.45, -0.6],
+  optimizer: [1.7, 2.45, -0.6],
+  policy: [3.7, 0.9, 0.3],
+  gate: [3.25, -0.85, 0.55],
+  paypal: [2.0, -1.85, 0.8],
 };
 
 export const NODE_META = NODE_META_2D;
-
-
-const SCENE_TINT: Record<string, string> = {
-  BLOCKED: "#FF647C",
-  FAILED: "#FF647C",
-  APPROVAL_REQUIRED: "#F4BB61",
-  CAPTURED: "#43D9A3",
-};
 
 export interface ProductMarker {
   id: string;
   label: string;
   decision: string | null;
+  rank?: number | null;
+  risk?: number | null;
+  coverage?: number | null;
 }
 
 interface SceneProps {
@@ -45,64 +46,81 @@ interface SceneProps {
   selected: NodeId | null;
   onSelect: (id: NodeId) => void;
   resetKey: number;
+  lowPower?: boolean;
+  onContextLost?: () => void;
 }
 
-function AegisCore({ tint, paused }: { tint: string; paused: boolean }) {
-  const ring1 = useRef<THREE.Mesh>(null);
-  const ring2 = useRef<THREE.Mesh>(null);
-  const core = useRef<THREE.Mesh>(null);
-  useFrame((_, dt) => {
+const STATE_COLOR: Record<NodeVisualState, string> = {
+  idle: "#3A4150",
+  active: "#6FE3EE",
+  done: "#B8DCFF",
+  warning: "#F2B45A",
+  blocked: "#FF5D6C",
+  success: "#52D3A3",
+};
+
+const DECISION_COLOR = (d: string | null) => (d === "BLOCK" ? "#FF5D6C" : d === "REQUIRE_APPROVAL" ? "#F2B45A" : d === "ALLOW_CHECKOUT" ? "#52D3A3" : "#5B6371");
+
+function MiniCore({ tint, paused }: { tint: string; paused: boolean }) {
+  const lattice = useRef<THREE.LineSegments>(null);
+  const ring = useRef<THREE.Mesh>(null);
+  const heart = useRef<THREE.Mesh>(null);
+  const geo = useMemo(() => new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(0.62, 1)), []);
+  useEffect(() => () => geo.dispose(), [geo]);
+  useFrame((state, dt) => {
     if (paused) return;
-    if (ring1.current) ring1.current.rotation.z += dt * 0.35;
-    if (ring2.current) ring2.current.rotation.x += dt * 0.25;
-    if (core.current) {
-      const s = 1 + Math.sin(performance.now() / 700) * 0.04;
-      core.current.scale.setScalar(s);
-    }
+    if (lattice.current) lattice.current.rotation.y += dt * 0.12;
+    if (ring.current) ring.current.rotation.z += dt * 0.18;
+    if (heart.current) heart.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 1.2) * 0.05);
   });
   return (
     <group>
-      <mesh ref={core}>
-        <icosahedronGeometry args={[0.55, 1]} />
-        <meshStandardMaterial color={tint} emissive={tint} emissiveIntensity={0.55} wireframe />
-      </mesh>
       <mesh>
-        <sphereGeometry args={[0.32, 16, 16]} />
-        <meshStandardMaterial color={tint} emissive={tint} emissiveIntensity={1.2} />
+        <octahedronGeometry args={[0.34, 0]} />
+        <meshPhysicalMaterial color="#cfefff" roughness={0.08} transmission={0.9} thickness={0.6} ior={1.4} transparent opacity={0.9} />
       </mesh>
-      <mesh ref={ring1}>
-        <torusGeometry args={[0.95, 0.012, 8, 64]} />
-        <meshBasicMaterial color={tint} transparent opacity={0.7} />
+      <mesh ref={heart}>
+        <sphereGeometry args={[0.09, 20, 20]} />
+        <meshBasicMaterial color={tint} toneMapped={false} />
       </mesh>
-      <mesh ref={ring2} rotation={[Math.PI / 2.4, 0, 0]}>
-        <torusGeometry args={[1.2, 0.008, 8, 64]} />
-        <meshBasicMaterial color="#6685FF" transparent opacity={0.5} />
+      <lineSegments ref={lattice} geometry={geo}>
+        <lineBasicMaterial color={tint} transparent opacity={0.35} />
+      </lineSegments>
+      <mesh ref={ring} rotation={[Math.PI / 2.2, 0, 0]}>
+        <torusGeometry args={[0.95, 0.004, 6, 160]} />
+        <meshBasicMaterial color={tint} transparent opacity={0.6} toneMapped={false} />
       </mesh>
     </group>
   );
 }
 
-function NodeShape({ id }: { id: NodeId }) {
+function NodeShape({ id }: { id: AgentNode }) {
   switch (id) {
     case "policy":
-      return <octahedronGeometry args={[0.32, 0]} />;
+      return <octahedronGeometry args={[0.3, 0]} />;
     case "risk":
-      return <tetrahedronGeometry args={[0.36, 0]} />;
+      return <tetrahedronGeometry args={[0.34, 0]} />;
     case "paypal":
-      return <boxGeometry args={[0.46, 0.46, 0.46]} />;
-    case "human":
-      return <dodecahedronGeometry args={[0.3, 0]} />;
+      return <boxGeometry args={[0.38, 0.38, 0.38]} />;
+    case "optimizer":
+      return <dodecahedronGeometry args={[0.27, 0]} />;
     default:
-      return <sphereGeometry args={[0.24, 20, 20]} />;
+      return <icosahedronGeometry args={[0.27, 0]} />;
   }
 }
 
-function SceneNode({ id, active, selected, onSelect, onHover }: { id: NodeId; active: boolean; selected: boolean; onSelect: (id: NodeId) => void; onHover: (id: NodeId | null) => void }) {
-  const [hover, setHover] = useState(false);
-  const meta = NODE_META[id];
+function AgentNodeMesh({ id, state, selected, onSelect, onHover, paused }: { id: AgentNode; state: NodeVisualState; selected: boolean; onSelect: (id: NodeId) => void; onHover: (id: NodeId | null) => void; paused: boolean }) {
   const mesh = useRef<THREE.Mesh>(null);
-  useFrame((_, dt) => {
-    if (mesh.current) mesh.current.rotation.y += dt * (active ? 1.2 : 0.2);
+  const halo = useRef<THREE.Mesh>(null);
+  const color = STATE_COLOR[state];
+  const lit = state !== "idle";
+  useFrame((st, dt) => {
+    if (paused) return;
+    if (mesh.current) mesh.current.rotation.y += dt * (state === "active" ? 0.9 : 0.15);
+    if (halo.current) {
+      const s = state === "active" ? 1 + Math.sin(st.clock.elapsedTime * 3) * 0.08 : 1;
+      halo.current.scale.setScalar(s);
+    }
   });
   return (
     <group position={NODE_POS[id]}>
@@ -110,12 +128,10 @@ function SceneNode({ id, active, selected, onSelect, onHover }: { id: NodeId; ac
         ref={mesh}
         onPointerOver={(e) => {
           e.stopPropagation();
-          setHover(true);
           onHover(id);
           document.body.style.cursor = "pointer";
         }}
         onPointerOut={() => {
-          setHover(false);
           onHover(null);
           document.body.style.cursor = "";
         }}
@@ -125,33 +141,65 @@ function SceneNode({ id, active, selected, onSelect, onHover }: { id: NodeId; ac
         }}
       >
         <NodeShape id={id} />
-        <meshStandardMaterial color={meta.color} emissive={meta.color} emissiveIntensity={active || selected ? 0.9 : 0.25} transparent opacity={active || hover || selected ? 1 : 0.75} />
+        <meshStandardMaterial color={lit ? color : "#202530"} emissive={color} emissiveIntensity={lit ? 0.8 : 0.08} metalness={0.6} roughness={0.3} flatShading />
       </mesh>
-      {(active || selected) && (
-        <mesh>
-          <torusGeometry args={[0.45, 0.01, 6, 48]} />
-          <meshBasicMaterial color={meta.color} />
-        </mesh>
-      )}
+      <mesh ref={halo}>
+        <torusGeometry args={[0.46, selected ? 0.008 : 0.004, 6, 96]} />
+        <meshBasicMaterial color={color} transparent opacity={lit || selected ? 0.85 : 0.25} toneMapped={false} />
+      </mesh>
     </group>
   );
 }
 
-function ProductNodes({ products }: { products: ProductMarker[] }) {
-  const base = NODE_POS.scout;
+function Link3D({ from, to, color, opacity, width = 0.8, dashed = false }: { from: [number, number, number]; to: [number, number, number]; color: string; opacity: number; width?: number; dashed?: boolean }) {
+  return <Line points={[from, to]} color={color} lineWidth={width} transparent opacity={opacity} dashed={dashed} dashSize={0.12} gapSize={0.1} />;
+}
+
+/** Candidate products: discovered around Scout; once ranked, they settle into slots beside the Optimizer. */
+function ProductNodes({ products, paused }: { products: ProductMarker[]; paused: boolean }) {
+  const refs = useRef<(THREE.Group | null)[]>([]);
+  const list = products.slice(0, 10);
+  const anyRanked = list.some((p) => p.rank != null);
+  const layoutKey = list.map((p) => `${p.id}:${p.rank}`).join("|");
+  const targets = useMemo(
+    () =>
+      list.map((p, i) => {
+        if (anyRanked && p.rank != null) {
+          const o = NODE_POS.optimizer;
+          return new THREE.Vector3(o[0] - 0.2 + (p.rank - 1) * 0.42, o[1] + 0.95, o[2] + 0.2);
+        }
+        const s = NODE_POS.scout;
+        const a = Math.PI * 0.55 + (i / Math.max(list.length, 1)) * Math.PI * 1.1;
+        const r = anyRanked ? 1.35 : 1.05; // rejected ones drift outward once ranking exists
+        return new THREE.Vector3(s[0] + Math.cos(a) * r, s[1] + Math.sin(a) * r * 0.9, s[2] + 0.25);
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- derived from product identity/rank only (layoutKey)
+    [layoutKey, anyRanked],
+  );
+  useFrame((_, dt) => {
+    const k = paused ? 1 : 1 - Math.exp(-dt * 2.4);
+    refs.current.forEach((g, i) => {
+      if (g && targets[i]) g.position.lerp(targets[i], k);
+    });
+  });
+  const scout = new THREE.Vector3(...NODE_POS.scout);
   return (
     <group>
-      {products.slice(0, 6).map((p, i) => {
-        const a = (i / Math.max(products.length, 1)) * Math.PI * 1.2 + Math.PI * 0.9;
-        const pos: [number, number, number] = [base[0] + Math.cos(a) * 1.25, base[1] + Math.sin(a) * 1.0, base[2] + 0.3];
-        const color = p.decision === "BLOCK" ? "#FF647C" : p.decision === "REQUIRE_APPROVAL" ? "#F4BB61" : p.decision === "ALLOW_CHECKOUT" ? "#43D9A3" : "#8B9AAF";
+      {list.map((p, i) => {
+        const color = DECISION_COLOR(p.decision);
+        const rejected = anyRanked && p.rank == null;
         return (
-          <group key={p.id} position={pos}>
-            <Line points={[[0, 0, 0], [base[0] - pos[0], base[1] - pos[1], base[2] - pos[2]]]} color={color} lineWidth={0.6} transparent opacity={0.35} />
+          <group key={p.id} ref={(g) => void (refs.current[i] = g)} position={scout}>
             <mesh>
-              <boxGeometry args={[0.14, 0.14, 0.14]} />
-              <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} />
+              <boxGeometry args={[0.11, 0.11, 0.11]} />
+              <meshStandardMaterial color={color} emissive={color} emissiveIntensity={rejected ? 0.15 : 0.7} transparent opacity={rejected ? 0.45 : 1} />
             </mesh>
+            {p.rank === 1 && (
+              <mesh>
+                <torusGeometry args={[0.13, 0.006, 6, 48]} />
+                <meshBasicMaterial color="#6FE3EE" toneMapped={false} />
+              </mesh>
+            )}
           </group>
         );
       })}
@@ -159,35 +207,34 @@ function ProductNodes({ products }: { products: ProductMarker[] }) {
   );
 }
 
-function ConnectionLine({ to, active }: { to: NodeId; active: boolean }) {
-  return <Line points={[NODE_POS.core, NODE_POS[to]]} color={active ? NODE_META[to].color : "#263347"} lineWidth={active ? 1.6 : 0.8} transparent opacity={active ? 0.95 : 0.6} />;
-}
-
-/** Instanced particles; only spawned for a real transition (keyed by event seq). */
-function DataParticles({ to, eventKey, paused }: { to: NodeId | null; eventKey: number; paused: boolean }) {
-  const COUNT = 14;
+/** A short burst along core → node, triggered only by a new recorded event (keyed by its seq). */
+function EventParticles({ to, eventKey, paused, count }: { to: AgentNode | "gate" | null; eventKey: number; paused: boolean; count: number }) {
   const ref = useRef<THREE.InstancedMesh>(null);
   const started = useRef<number | null>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
+  const from = useMemo(() => new THREE.Vector3(...NODE_POS.core), []);
+  const target = useMemo(() => new THREE.Vector3(...NODE_POS[to ?? "core"]), [to]);
+  const mid = useMemo(() => from.clone().lerp(target, 0.5).add(new THREE.Vector3(0, 0.5, 0.4)), [from, target]);
+  const curve = useMemo(() => new THREE.QuadraticBezierCurve3(from, mid, target), [from, mid, target]);
   useEffect(() => {
-    started.current = to && eventKey > 0 ? performance.now() : null;
+    started.current = to && eventKey > 0 ? -1 : null; // -1 = start on next frame (clock-relative)
   }, [eventKey, to]);
-  useFrame(() => {
+  useFrame((state) => {
     const mesh = ref.current;
     if (!mesh || paused) return;
+    const now = state.clock.elapsedTime;
+    if (started.current === -1) started.current = now;
     const t0 = started.current;
-    const from = new THREE.Vector3(...NODE_POS.core);
-    const target = to ? new THREE.Vector3(...NODE_POS[to]) : from;
-    for (let i = 0; i < COUNT; i++) {
+    for (let i = 0; i < count; i++) {
       let p = -1;
       if (t0 !== null) {
-        const elapsed = (performance.now() - t0) / 1600 - i * 0.06;
-        p = elapsed >= 0 && elapsed <= 1 ? elapsed : -1;
+        const e = (now - t0) / 1.5 - i * 0.05;
+        p = e >= 0 && e <= 1 ? e : -1;
       }
       if (p < 0) dummy.scale.setScalar(0);
       else {
-        dummy.position.copy(from).lerp(target, p);
-        dummy.scale.setScalar(0.05 * (1 - Math.abs(p - 0.5)));
+        curve.getPoint(p, dummy.position);
+        dummy.scale.setScalar(0.035 * Math.sin(p * Math.PI) + 0.008);
       }
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
@@ -195,115 +242,165 @@ function DataParticles({ to, eventKey, paused }: { to: NodeId | null; eventKey: 
     mesh.instanceMatrix.needsUpdate = true;
   });
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, COUNT]}>
+    <instancedMesh ref={ref} args={[undefined, undefined, count]}>
       <sphereGeometry args={[1, 8, 8]} />
-      <meshBasicMaterial color="#56E0F0" />
+      <meshBasicMaterial color="#6FE3EE" toneMapped={false} />
     </instancedMesh>
   );
 }
 
-function SceneLighting() {
+function Dust({ count }: { count: number }) {
+  const geo = useMemo(() => {
+    let seed = 0x1e9a;
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const pos = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] = (rnd() - 0.5) * 16;
+      pos[i * 3 + 1] = (rnd() - 0.5) * 9;
+      pos[i * 3 + 2] = (rnd() - 0.5) * 8 - 2;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    return g;
+  }, [count]);
+  useEffect(() => () => geo.dispose(), [geo]);
   return (
-    <>
-      <ambientLight intensity={0.35} />
-      <pointLight position={[0, 0, 4]} intensity={18} color="#56E0F0" />
-      <pointLight position={[-5, 4, -2]} intensity={10} color="#6685FF" />
-    </>
+    <points geometry={geo}>
+      <pointsMaterial size={0.018} color="#B8DCFF" transparent opacity={0.35} depthWrite={false} blending={THREE.AdditiveBlending} />
+    </points>
   );
 }
 
 function CameraRig({ resetKey, paused }: { resetKey: number; paused: boolean }) {
   const controls = useRef<OrbitControlsImpl>(null);
-  const { camera, pointer } = useThree();
+  const { camera } = useThree();
   useEffect(() => {
-    camera.position.set(0, 0.6, 9.5);
-    controls.current?.target.set(0.6, 0, 0);
+    camera.position.set(0, 0.4, 9.2);
+    controls.current?.target.set(0, 0.2, 0);
     controls.current?.update();
   }, [resetKey, camera]);
-  useFrame(() => {
+  useFrame(({ pointer }, dt) => {
     if (paused || !controls.current) return;
-    // Subtle pointer-responsive parallax; OrbitControls remains in charge.
-    controls.current.target.x += ((0.6 + pointer.x * 0.25) - controls.current.target.x) * 0.02;
-    controls.current.target.y += (pointer.y * 0.15 - controls.current.target.y) * 0.02;
+    const k = 1 - Math.exp(-dt * 1.5);
+    const t = controls.current.target;
+    t.x += (pointer.x * 0.35 - t.x) * k;
+    t.y += (0.2 + pointer.y * 0.2 - t.y) * k;
     controls.current.update();
   });
-  return <OrbitControls ref={controls} enablePan={false} enableZoom minDistance={5} maxDistance={14} enableDamping />;
+  // Zoom disabled so the page scroll is never captured by the canvas.
+  return <OrbitControls ref={controls} enablePan={false} enableZoom={false} minPolarAngle={Math.PI * 0.32} maxPolarAngle={Math.PI * 0.62} minAzimuthAngle={-0.6} maxAzimuthAngle={0.6} enableDamping />;
 }
 
-/** Projects node positions to screen space each frame and moves the DOM labels (one overlay, no portals). */
-function LabelProjector({ labels }: { labels: RefObject<Partial<Record<NodeId, HTMLDivElement | null>>> }) {
+/** Projects anchor positions to screen space each frame and moves the DOM labels. */
+function LabelProjector({ labels }: { labels: RefObject<Record<string, HTMLDivElement | null>> }) {
   const { camera, size } = useThree();
   const v = useMemo(() => new THREE.Vector3(), []);
   useFrame(() => {
-    for (const id of Object.keys(NODE_POS) as NodeId[]) {
+    for (const id of Object.keys(NODE_POS) as (keyof typeof NODE_POS)[]) {
       const el = labels.current?.[id];
       if (!el) continue;
       v.set(...NODE_POS[id]).project(camera);
       const x = ((v.x + 1) / 2) * size.width;
       const y = ((1 - v.y) / 2) * size.height;
-      // Imperative DOM write from the render loop (intentional: avoids a React render per frame).
-      el.style.setProperty("transform", `translate(-50%, 0) translate(${x}px, ${y + (id === "core" ? 46 : 22)}px)`);
+      // Imperative DOM write from the render loop (avoids a React render per frame).
+      el.style.setProperty("transform", `translate(-50%, 0) translate(${x}px, ${y + (id === "core" ? 52 : id === "gate" ? 14 : 26)}px)`);
       el.style.setProperty("opacity", v.z < 1 ? "1" : "0");
     }
   });
   return null;
 }
 
-function statusFor(id: NodeId, vm: MissionViewModel | null): string | null {
-  if (!vm) return null;
-  switch (id) {
-    case "scout":
-      return vm.steps.SCOUT;
-    case "risk":
-      return vm.steps.RISK;
-    case "optimizer":
-      return vm.steps.OPTIMIZE;
-    case "policy":
-      return vm.decision ?? vm.steps.POLICY;
-    case "paypal":
-      return vm.paymentStatus;
-    default:
-      return null;
-  }
-}
-
-export default function AegisScene({ vm, products = [], paused, selected, onSelect, resetKey }: SceneProps) {
-  const tint = vm ? (SCENE_TINT[vm.scene] ?? "#56E0F0") : "#56E0F0";
-  const active = vm?.activeNode && vm.activeNode !== "core" ? vm.activeNode : null;
-  const ids = Object.keys(NODE_POS).filter((k) => k !== "core") as NodeId[];
-  const labels = useRef<Partial<Record<NodeId, HTMLDivElement | null>>>({});
+export default function AegisScene({ vm, products = [], paused, selected, onSelect, resetKey, lowPower = false, onContextLost }: SceneProps) {
+  const labels = useRef<Record<string, HTMLDivElement | null>>({});
   const [hover, setHover] = useState<NodeId | null>(null);
+  const states = useMemo(() => Object.fromEntries(AGENT_NODES.map((id) => [id, nodeState(id, vm)])) as Record<AgentNode, NodeVisualState>, [vm]);
+  const coreTint = vm?.scene === "FAILED" || vm?.scene === "BLOCKED" ? "#FF5D6C" : vm?.scene === "CAPTURED" ? "#52D3A3" : vm?.scene === "APPROVAL_REQUIRED" ? "#F2B45A" : "#6FE3EE";
+  const active = vm?.activeNode ?? null;
+  const particleTarget: AgentNode | "gate" | null = active === "human" ? "gate" : active && (AGENT_NODES as string[]).includes(active) ? (active as AgentNode) : null;
+  const gateLit = (vm?.approvals ?? 0) > 0;
+
+  const pipeline: [keyof typeof NODE_POS, keyof typeof NODE_POS][] = [
+    ["scout", "risk"],
+    ["risk", "optimizer"],
+    ["optimizer", "policy"],
+    ["policy", "gate"],
+    ["gate", "paypal"],
+  ];
+
   return (
     <div className="relative h-full w-full">
-      <Canvas camera={{ position: [0, 0.6, 9.5], fov: 45 }} dpr={[1, 1.75]} frameloop={paused ? "demand" : "always"} gl={{ antialias: true, powerPreference: "low-power" }}>
-        <color attach="background" args={["#05070B"]} />
-        <fog attach="fog" args={["#05070B", 9, 20]} />
-        <SceneLighting />
-        <AegisCore tint={tint} paused={paused} />
-        {ids.map((id) => (
-          <ConnectionLine key={`l-${id}`} to={id} active={active === id} />
+      <Canvas
+        camera={{ position: [0, 0.4, 9.2], fov: 42 }}
+        dpr={lowPower ? 1 : [1, 1.6]}
+        frameloop={paused ? "demand" : "always"}
+        gl={{ antialias: !lowPower, alpha: true, powerPreference: "low-power" }}
+        onCreated={({ gl }) => {
+          gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.domElement.addEventListener(
+            "webglcontextlost",
+            (e) => {
+              e.preventDefault();
+              onContextLost?.();
+            },
+            { once: true },
+          );
+        }}
+      >
+        <fog attach="fog" args={["#050608", 9, 19]} />
+        <ambientLight intensity={0.25} />
+        <pointLight position={[0, 1, 5]} intensity={22} color="#6FE3EE" />
+        <pointLight position={[-6, 4, -3]} intensity={10} color="#9D8CF2" />
+        <Dust count={lowPower ? 120 : 360} />
+        <MiniCore tint={coreTint} paused={paused} />
+        {AGENT_NODES.map((id) => (
+          <Link3D key={`s-${id}`} from={NODE_POS.core} to={NODE_POS[id]} color={states[id] === "idle" ? "#272C37" : STATE_COLOR[states[id]]} opacity={states[id] === "idle" ? 0.55 : 0.75} width={active === id ? 1.4 : 0.7} />
         ))}
-        {ids.map((id) => (
-          <SceneNode key={id} id={id} active={active === id} selected={selected === id} onSelect={onSelect} onHover={setHover} />
+        {pipeline.map(([a, b]) => (
+          <Link3D key={`p-${a}-${b}`} from={NODE_POS[a]} to={NODE_POS[b]} color={b === "paypal" || b === "gate" ? (gateLit ? "#52D3A3" : "#272C37") : "#272C37"} opacity={0.5} width={0.6} dashed={b === "gate" || a === "gate"} />
         ))}
-        <ProductNodes products={products} />
-        <DataParticles to={active} eventKey={vm?.lastEvent?.seq ?? 0} paused={paused} />
+        <mesh position={NODE_POS.gate} rotation={[0, 0, Math.PI / 4]}>
+          <boxGeometry args={[0.16, 0.16, 0.02]} />
+          <meshBasicMaterial color={gateLit ? "#52D3A3" : "#3A4150"} toneMapped={false} />
+        </mesh>
+        {AGENT_NODES.map((id) => (
+          <AgentNodeMesh key={id} id={id} state={states[id]} selected={selected === id} onSelect={onSelect} onHover={setHover} paused={paused} />
+        ))}
+        <ProductNodes products={products} paused={paused} />
+        <EventParticles to={particleTarget} eventKey={vm?.lastEvent?.seq ?? 0} paused={paused} count={lowPower ? 8 : 16} />
         <CameraRig resetKey={resetKey} paused={paused} />
         <LabelProjector labels={labels} />
       </Canvas>
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        {(Object.keys(NODE_POS) as NodeId[]).map((id) => {
-          const status = statusFor(id, vm);
+        {(["core", ...AGENT_NODES, "gate"] as const).map((id) => {
+          const isAgent = id !== "core" && id !== "gate";
+          const st = isAgent ? states[id] : null;
+          const status = isAgent ? statusText(id, vm) : null;
           return (
             <div
               key={id}
               ref={(el) => {
                 labels.current[id] = el;
               }}
-              className="absolute left-0 top-0 whitespace-nowrap rounded border border-line bg-bg/80 px-1.5 py-0.5 text-center font-mono text-[10px] text-fg"
+              className="absolute left-0 top-0 whitespace-nowrap text-center"
             >
-              {NODE_META[id].label}
-              {(hover === id || selected === id) && status && <div className="text-[9px] text-muted">{status}</div>}
+              {id === "gate" ? (
+                <span className={`font-mono text-[9px] tracking-[0.18em] ${gateLit ? "text-success" : "text-faint"}`}>HUMAN GATE</span>
+              ) : id === "core" ? (
+                <span className="font-mono text-[9.5px] tracking-[0.24em] text-muted">AEGIS CORE</span>
+              ) : (
+                <>
+                  <span className={`block font-mono text-[10px] tracking-[0.2em] ${st === "idle" ? "text-faint" : "text-fg"}`}>{NODE_META[id].label.toUpperCase()}</span>
+                  {status && (
+                    <span className="mt-0.5 block font-mono text-[9px] tracking-[0.12em]" style={{ color: STATE_COLOR[st ?? "idle"] }}>
+                      {status}
+                    </span>
+                  )}
+                  {hover === id && !status && <span className="mt-0.5 block font-mono text-[9px] text-faint">{NODE_META[id].kind}</span>}
+                </>
+              )}
             </div>
           );
         })}

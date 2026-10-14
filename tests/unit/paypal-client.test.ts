@@ -30,6 +30,59 @@ describe("PayPal client (mocked fetch — never reaches PayPal)", () => {
     expect(b.purchase_units[0].custom_id).toBe("pay_1");
   });
 
+  it("AUTHORIZE orders state only the cap (no invented shipping/tax breakdown)", () => {
+    const b = buildCreateOrderBody({ requestId: "r", intent: "AUTHORIZE", amount: { currency: "USD", totalMinor: 183_977, itemTotalMinor: 159_980, shippingMinor: 0, taxMinor: 0 }, customId: "pay_2", invoiceId: "AEGIS-pay_2", description: "x" });
+    expect(b.intent).toBe("AUTHORIZE");
+    expect(b.purchase_units[0].amount).toEqual({ currency_code: "USD", value: "1839.77" });
+  });
+
+  it("parses authorizations and refunds from an order and verifies AUTHORIZE intent on the cap only", () => {
+    const o = parsePayPalOrder(
+      {
+        id: "AUTHORDER12345",
+        status: "COMPLETED",
+        intent: "AUTHORIZE",
+        purchase_units: [
+          {
+            custom_id: "pay_2",
+            invoice_id: "AEGIS-pay_2",
+            amount: { currency_code: "USD", value: "1839.77" },
+            payments: {
+              authorizations: [{ id: "8AA831015G517922L", status: "CAPTURED", amount: { currency_code: "USD", value: "1839.77" }, expiration_time: "2026-11-12T10:00:00Z" }],
+              captures: [{ id: "2GG279541U471931P", status: "PARTIALLY_REFUNDED", amount: { currency_code: "USD", value: "1712.35" } }],
+              refunds: [{ id: "1JU08902781691411", status: "COMPLETED", amount: { currency_code: "USD", value: "200.00" }, links: [{ rel: "up", href: "https://api-m.sandbox.paypal.com/v2/payments/captures/2GG279541U471931P" }] }],
+            },
+          },
+        ],
+      },
+      "dbg",
+    );
+    expect(o.authorizations[0]).toMatchObject({ id: "8AA831015G517922L", status: "CAPTURED", amountMinor: 183_977, expirationTime: "2026-11-12T10:00:00Z" });
+    expect(o.refunds[0]).toMatchObject({ amountMinor: 20_000, captureId: "2GG279541U471931P" });
+    const v = verifyOrderMatches(o, { orderId: "AUTHORDER12345", amount: { currency: "USD", totalMinor: 183_977, itemTotalMinor: 159_980, shippingMinor: 0, taxMinor: 0 }, customId: "pay_2", invoiceId: "AEGIS-pay_2", merchantId: null, intent: "AUTHORIZE" });
+    expect(v).toEqual({ ok: true, problems: [] });
+    expect(verifyOrderMatches(o, { orderId: "AUTHORDER12345", amount: { currency: "USD", totalMinor: 183_977, itemTotalMinor: 0, shippingMinor: 0, taxMinor: 0 }, customId: "pay_2", invoiceId: "AEGIS-pay_2", merchantId: null }).ok).toBe(false);
+  });
+
+  it("captures an authorization with an explicit amount and final_capture, and refunds with a note", async () => {
+    const seen: Array<{ url: string; body: unknown; rid: string | null }> = [];
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      const h = new Headers(init.headers);
+      seen.push({ url, body: String(init.body ?? "").startsWith("{") ? JSON.parse(String(init.body)) : null, rid: h.get("PayPal-Request-Id") });
+      if (url.endsWith("/v1/oauth2/token")) return new Response(JSON.stringify({ access_token: "T", expires_in: 3600 }), { status: 200 });
+      if (url.includes("/authorizations/")) return new Response(JSON.stringify({ id: "CAPID12345", status: "COMPLETED", amount: { currency_code: "USD", value: "1712.35" } }), { status: 201 });
+      return new Response(JSON.stringify({ id: "REFID12345", status: "COMPLETED", amount: { currency_code: "USD", value: "200.00" } }), { status: 201 });
+    });
+    const gw = new PayPalHttpGateway({ baseUrl: "https://api-m.sandbox.paypal.com", clientId: "id", clientSecret: "secret", fetchImpl: fetchImpl as unknown as typeof fetch });
+    const cap = await gw.captureAuthorization("8AA831015G517922L", { amountMinor: 171_235, currency: "USD", requestId: "settle-1", finalCapture: true });
+    expect(cap).toMatchObject({ id: "CAPID12345", amountMinor: 171_235 });
+    const ref = await gw.refundCapture("CAPID12345", { amountMinor: 20_000, currency: "USD", requestId: "ref-1", note: "damaged" });
+    expect(ref).toMatchObject({ id: "REFID12345", amountMinor: 20_000, captureId: "CAPID12345" });
+    expect(seen[1]).toMatchObject({ url: "https://api-m.sandbox.paypal.com/v2/payments/authorizations/8AA831015G517922L/capture", rid: "settle-1", body: { amount: { currency_code: "USD", value: "1712.35" }, final_capture: true } });
+    expect(seen[2]).toMatchObject({ url: "https://api-m.sandbox.paypal.com/v2/payments/captures/CAPID12345/refund", rid: "ref-1", body: { amount: { value: "200.00" }, note_to_payer: "damaged" } });
+    await expect(gw.voidAuthorization("../evil", "v")).rejects.toBeInstanceOf(ProviderError);
+  });
+
   it("sends PayPal-Request-Id and caches the OAuth token", async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = String(url);

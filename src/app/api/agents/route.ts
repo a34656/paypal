@@ -2,7 +2,7 @@ import { apiRoute } from "@/server/api";
 
 const AGENTS = [
   { id: "mission-interpreter", name: "Mission Interpreter", step: null, description: "Turns free text into a structured mission PROPOSAL the user must confirm.", capabilities: ["Parse budget, quantity, currency, deadline, attributes"], tools: ["LLM (if configured, no tools) or deterministic parser"] },
-  { id: "scout", name: "Scout", step: "SCOUT", description: "Searches the configured product provider and normalises prices and currencies.", capabilities: ["ProductSearch.search()", "Validate & normalise candidates"], tools: ["ProductSearch interface (demo provider)"] },
+  { id: "scout", name: "Scout", step: "SCOUT", description: "Searches the configured product provider and normalises prices and currencies.", capabilities: ["ProductSearch.search()", "Validate & normalise candidates"], tools: ["ProductSearch interface (Channel3 UCP catalogue; labelled demo fallback)"] },
   { id: "risk", name: "Risk", step: "RISK", description: "Deterministic risk scoring. Missing evidence is scored as worst case.", capabilities: ["assessRisk(product, mission)"], tools: ["None (pure function)"] },
   { id: "optimizer", name: "Optimizer", step: "OPTIMIZE", description: "Ranks only eligible offers using policy-versioned weights.", capabilities: ["optimize(candidates, mission, policy)"], tools: ["None (pure function)"] },
   { id: "policy-guard", name: "Policy Guard", step: "POLICY", description: "Authoritative: calls the pure policy engine and records the decision.", capabilities: ["evaluate(snapshot, policy, context)"], tools: ["None (pure function)"] },

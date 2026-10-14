@@ -141,7 +141,27 @@ export function labelFor(e: MissionEvent): string {
     case "payment.cancelled":
       return "Checkout cancelled";
     case "payment.refunded":
-      return "Refunded";
+      return "Refunded in full";
+    case "payment.partially_refunded":
+      return "Partially refunded";
+    case "payment.refund_requested":
+      return m.simulated ? "Simulated refund requested" : "Refund requested";
+    case "payment.refund_failed":
+      return "Refund failed";
+    case "payment.authorize_started":
+      return "Authorization hold requested";
+    case "payment.authorized":
+      return m.simulated ? "SIMULATED hold placed (no money moved)" : "Authorization hold placed by PayPal";
+    case "payment.authorize_failed":
+      return "Authorization failed";
+    case "payment.settle_started":
+      return "Settlement of the final amount started";
+    case "payment.hold_release_requested":
+      return "Hold release requested";
+    case "payment.hold_released":
+      return "Hold released — nothing captured";
+    case "payment.hold_expired":
+      return "Hold expired — nothing captured";
     case "mission.completed":
       return "Mission completed";
     case "mission.failed":
@@ -212,6 +232,9 @@ export function reduceEvent(vm: MissionViewModel, e: MissionEvent): MissionViewM
     case "payment.simulated_buyer_approval":
     case "payment.capture_started":
     case "payment.capture_pending_at_provider":
+    case "payment.authorize_started":
+    case "payment.authorized":
+    case "payment.settle_started":
       next.scene = "CHECKOUT";
       if (typeof m.simulated === "boolean") next.simulated = m.simulated;
       if (to) next.paymentStatus = to;
@@ -226,11 +249,17 @@ export function reduceEvent(vm: MissionViewModel, e: MissionEvent): MissionViewM
     case "payment.refunded":
       next.paymentStatus = "REFUNDED";
       break;
+    case "payment.partially_refunded":
+      next.paymentStatus = "PARTIALLY_REFUNDED";
+      break;
     case "payment.capture_failed":
+    case "payment.authorize_failed":
     case "payment.cancelled":
     case "payment.expired":
+    case "payment.hold_released":
+    case "payment.hold_expired":
       if (to) next.paymentStatus = to;
-      next.scene = e.eventType === "payment.capture_failed" ? "FAILED" : "APPROVAL_REQUIRED";
+      next.scene = e.eventType === "payment.capture_failed" || e.eventType === "payment.authorize_failed" ? "FAILED" : e.eventType.startsWith("payment.hold_") ? "BLOCKED" : "APPROVAL_REQUIRED";
       break;
     case "mission.failed":
       next.scene = "FAILED";
@@ -256,7 +285,7 @@ export const SCENE_LABEL: Record<SceneState, string> = {
   POLICY: "Policy evaluation",
   APPROVAL_REQUIRED: "Human decision required",
   BLOCKED: "Blocked",
-  CHECKOUT: "Checkout",
+  CHECKOUT: "Checkout / payment",
   CAPTURED: "Captured",
   FAILED: "Failed",
 };

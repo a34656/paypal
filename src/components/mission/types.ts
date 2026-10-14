@@ -20,6 +20,9 @@ export interface MissionProductDTO {
   productId: string;
   quantity: number;
   totalMinor: number | null;
+  /** EXACT = disclosed all-in total; CAP = spending cap (shipping/tax undisclosed). */
+  amountBasis: "EXACT" | "CAP" | null;
+  allowanceMinor: number | null;
   riskScore: number | null;
   trustScore: number | null;
   riskLevel: string | null;
@@ -49,6 +52,9 @@ export interface MissionProductDTO {
     stockQuantity: number | null;
     attributes: Record<string, string>;
     isDemoData: boolean;
+    provider: string;
+    sellerId: string | null;
+    metadata: { baselineUnitPriceMinor?: number | null; baselineSource?: string | null; inStock?: boolean | null; offerUrl?: string | null; sellerTrustBasis?: string | null } | null;
   };
 }
 export interface ApprovalDTO {
@@ -75,12 +81,21 @@ export interface PaymentDTO {
   providerOrderId: string | null;
   providerCaptureId: string | null;
   amountMinor: number;
+  itemTotalMinor: number;
+  allowanceMinor: number;
   currency: string;
+  intent: "CAPTURE" | "AUTHORIZE";
+  providerAuthorizationId: string | null;
+  authorizationExpiresAt: string | null;
+  settledMinor: number | null;
+  refundedMinor: number;
+  refunds?: { id: string; amountMinor: number; currency: string; reason: string; status: string; providerRefundId: string | null; createdAt: string }[];
   createdAt: string;
   updatedAt: string;
 }
 export interface MissionDTO {
   id: string;
+  ownerId: string;
   title: string;
   description: string;
   rawInputText: string;

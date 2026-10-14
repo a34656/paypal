@@ -64,3 +64,47 @@ describe("one reducer for live and replay", () => {
     expect(reduceEvents(blocked).scene).toBe("BLOCKED");
   });
 });
+
+describe("authorization holds, settlement and refunds", () => {
+  it("track the hold through settlement and refunds; PayPal lights only once a payment exists", async () => {
+    const { nodeState } = await import("@/components/three/node-meta");
+    const base = stream.slice(0, 10); // up to approval.granted
+    const beforePay = reduceEvents(base);
+    expect(nodeState("paypal", beforePay)).toBe("idle");
+    expect(nodeState("policy", beforePay)).toBe("warning");
+    const s2 = [
+      ...base,
+      ev("payment.authorize_started", "user:u", { to: "AUTHORIZE_PENDING", simulated: false }, "INFO"),
+      ev("payment.authorized", "provider:paypal", { to: "AUTHORIZED", simulated: false }),
+      ev("payment.settle_started", "user:u", { to: "SETTLE_PENDING" }, "INFO"),
+      ev("payment.captured", "provider:paypal", { to: "CAPTURED", simulated: false }),
+      ev("payment.partially_refunded", "provider:paypal", { to: "PARTIALLY_REFUNDED" }),
+    ];
+    const held = reduceEvents(s2.slice(0, 12));
+    expect(held).toMatchObject({ paymentStatus: "AUTHORIZED", scene: "CHECKOUT" });
+    expect(held.lastEvent?.label).toBe("Authorization hold placed by PayPal");
+    expect(nodeState("paypal", held)).toBe("active");
+    const refunded = reduceEvents(s2);
+    expect(refunded.paymentStatus).toBe("PARTIALLY_REFUNDED");
+    expect(nodeState("paypal", refunded)).toBe("success");
+  });
+
+  it("a released hold or failed authorization never looks successful", async () => {
+    const { nodeState } = await import("@/components/three/node-meta");
+    const base = stream.slice(0, 10);
+    const released = reduceEvents([...base, ev("payment.authorized", "provider:paypal", { to: "AUTHORIZED" }), ev("payment.hold_released", "user:u", { to: "CANCELLED" }, "INFO")]);
+    expect(released).toMatchObject({ paymentStatus: "CANCELLED", scene: "BLOCKED" });
+    expect(nodeState("paypal", released)).toBe("blocked");
+    const failed = reduceEvents([...base, ev("payment.authorize_failed", "provider:paypal", { to: "FAILED" }, "FAILURE")]);
+    expect(failed.scene).toBe("FAILED");
+  });
+
+  it("node states follow recorded steps only", async () => {
+    const { nodeState } = await import("@/components/three/node-meta");
+    expect(nodeState("scout", null)).toBe("idle");
+    expect(nodeState("scout", reduceEvents(stream.slice(0, 4)))).toBe("active");
+    expect(nodeState("risk", reduceEvents(stream.slice(0, 4)))).toBe("idle");
+    const failed = reduceEvents([...stream.slice(0, 4), ev("agent.step_failed", "agent:scout", { step: "SCOUT" }, "FAILURE")]);
+    expect(nodeState("scout", failed)).toBe("blocked");
+  });
+});

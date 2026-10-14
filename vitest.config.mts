@@ -31,7 +31,7 @@ export default defineConfig({
           fileParallelism: false,
           testTimeout: 30_000,
           hookTimeout: 60_000,
-          env: { DATABASE_URL: TEST_DB, NODE_ENV: "test", SESSION_SECRET: "test-session-secret-0123456789-abcdefghijklmnop" },
+          env: { DATABASE_URL: TEST_DB, NODE_ENV: "test", SESSION_SECRET: "test-session-secret-0123456789-abcdefghijklmnop", PRODUCT_PROVIDER: "demo" },
         },
       },
     ],

@@ -1,25 +1,33 @@
 @import "tailwindcss";
 
-/* AEGIS design tokens — premium financial-intelligence control room. */
+/*
+ * AEGIS design tokens — cinematic financial-security system.
+ * Near-black depth, charcoal surfaces, warm-white type, restrained luminous cyan / ice blue
+ * for live system state, violet only for AI/analytics accents, amber = warning, red = blocked.
+ */
 @theme {
-  --color-bg: #05070b;
-  --color-bg-2: #090d14;
-  --color-elevated: #0d1420;
-  --color-line: #1a2433;
-  --color-line-strong: #263347;
-  --color-fg: #f3f7fb;
-  --color-muted: #8b9aaf;
-  --color-cyan: #56e0f0;
-  --color-blue: #6685ff;
-  --color-purple: #a78bfa;
-  --color-success: #43d9a3;
-  --color-warning: #f4bb61;
-  --color-critical: #ff647c;
+  --color-bg: #050608;
+  --color-bg-2: #0b0d12;
+  --color-elevated: #10131a;
+  --color-line: #1a1e27;
+  --color-line-strong: #272c37;
+  --color-fg: #f2eee6;
+  --color-muted: #8b93a2;
+  --color-faint: #5b6371;
+  --color-cyan: #6fe3ee;
+  --color-ice: #b8dcff;
+  --color-blue: #86a8ff;
+  --color-purple: #9d8cf2;
+  --color-success: #52d3a3;
+  --color-warning: #f2b45a;
+  --color-critical: #ff5d6c;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-  --radius-panel: 10px;
+  --radius-panel: 6px;
+
+  --ease-cine: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 :root {
@@ -34,30 +42,124 @@ body {
 
 body {
   font-family: var(--font-sans);
-  font-feature-settings: "tnum" 1, "cv11" 1;
+  font-feature-settings: "cv11" 1, "ss01" 1;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Subtle grid texture used behind the shell. */
+/* Money, scores and identifiers always align. */
+.font-mono,
+.tabular,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Compact technical metadata label. */
+.tech-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.4;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* Large editorial headline. */
+.editorial {
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 0.95;
+}
+
+/* Hairline grid texture (very low contrast). */
 .bg-grid {
   background-image:
-    linear-gradient(to right, rgb(86 224 240 / 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(86 224 240 / 0.035) 1px, transparent 1px);
-  background-size: 32px 32px;
+    linear-gradient(to right, rgb(111 227 238 / 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(111 227 238 / 0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Surfaces: thin border, faint glass, no glow by default. */
+.surface {
+  background: linear-gradient(180deg, rgb(16 19 26 / 0.72), rgb(11 13 18 / 0.72));
+  border: 1px solid var(--color-line);
+  backdrop-filter: blur(6px);
 }
 
 .glow-cyan {
-  box-shadow: 0 0 0 1px rgb(86 224 240 / 0.25), 0 0 24px -8px rgb(86 224 240 / 0.45);
+  box-shadow: 0 0 0 1px rgb(111 227 238 / 0.22), 0 0 32px -12px rgb(111 227 238 / 0.5);
+}
+
+/* Ambient atmosphere: fog pools + a sparse, slowly drifting particle field. Behind content. */
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(60% 50% at 78% -10%, rgb(111 227 238 / 0.07), transparent 70%),
+    radial-gradient(45% 40% at 5% 105%, rgb(157 140 242 / 0.05), transparent 70%),
+    radial-gradient(80% 60% at 50% 120%, rgb(184 220 255 / 0.035), transparent 70%);
+}
+.ambient::before,
+.ambient::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgb(242 238 230 / 0.35), transparent 60%),
+    radial-gradient(1px 1px at 72% 34%, rgb(111 227 238 / 0.4), transparent 60%),
+    radial-gradient(1px 1px at 38% 76%, rgb(242 238 230 / 0.25), transparent 60%),
+    radial-gradient(1px 1px at 88% 82%, rgb(184 220 255 / 0.35), transparent 60%),
+    radial-gradient(1px 1px at 55% 12%, rgb(242 238 230 / 0.2), transparent 60%),
+    radial-gradient(1px 1px at 24% 52%, rgb(111 227 238 / 0.25), transparent 60%);
+  background-size: 420px 420px;
+  animation: aegis-drift 120s linear infinite;
+  opacity: 0.6;
+}
+.ambient::after {
+  background-size: 640px 640px;
+  animation-duration: 200s;
+  animation-direction: reverse;
+  opacity: 0.35;
+}
+@keyframes aegis-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-420px, -210px, 0);
+  }
+}
+
+/* Thin animated scan line used for in-flight states (driven by real state, never decorative timers). */
+.scanline {
+  position: relative;
+  overflow: hidden;
+}
+.scanline::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 -40%;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(111 227 238 / 0.12), transparent);
+  animation: aegis-scan 2.2s var(--ease-cine) infinite;
+}
+@keyframes aegis-scan {
+  to {
+    transform: translateX(350%);
+  }
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-cyan);
+  outline: 1.5px solid var(--color-cyan);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::selection {
-  background: rgb(102 133 255 / 0.35);
+  background: rgb(134 168 255 / 0.3);
 }
 
 /* Scrollbars */
@@ -78,8 +180,13 @@ body {
 }
 
 @keyframes aegis-pulse {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 .animate-aegis-pulse {
   animation: aegis-pulse 2.4s ease-in-out infinite;
@@ -87,14 +194,26 @@ body {
 
 /* AG Grid theme bridge */
 .aegis-grid {
-  --ag-background-color: var(--color-bg-2);
+  --ag-background-color: transparent;
   --ag-foreground-color: var(--color-fg);
-  --ag-header-background-color: var(--color-elevated);
+  --ag-header-background-color: var(--color-bg-2);
   --ag-header-text-color: var(--color-muted);
   --ag-border-color: var(--color-line);
-  --ag-row-hover-color: rgb(86 224 240 / 0.05);
-  --ag-selected-row-background-color: rgb(102 133 255 / 0.14);
+  --ag-row-border-color: rgb(26 30 39 / 0.7);
+  --ag-row-hover-color: rgb(111 227 238 / 0.04);
+  --ag-selected-row-background-color: rgb(134 168 255 / 0.1);
   --ag-font-family: var(--font-sans);
-  --ag-font-size: 13px;
+  --ag-font-size: 12.5px;
+  --ag-row-height: 38px;
+  --ag-header-height: 36px;
   --ag-accent-color: var(--color-cyan);
+  --ag-wrapper-border-radius: 6px;
+  --ag-header-font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.aegis-grid .ag-header-cell-text {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }

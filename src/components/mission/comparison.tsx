@@ -1,6 +1,6 @@
 "use client";
 import { Fragment, useState } from "react";
-import { ChevronDown, ChevronRight, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Star } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 import { StatusBadge } from "@/components/ui/badge";
 import { cn } from "@/lib/client/cn";
@@ -58,13 +58,26 @@ export function Comparison({ products, recommendedProductId, currency }: { produ
                     <div className="mt-0.5 font-mono text-[11px] text-muted">
                       {mp.quantity} × {formatMoney(mp.product.unitPriceMinor, mp.product.currency)}
                       {mp.product.isDemoData && <span className="ml-2 rounded bg-purple/10 px-1 text-purple">DEMO DATA</span>}
+                      {!mp.product.isDemoData && <span className="ml-2 rounded bg-blue/10 px-1 text-blue">LIVE · {mp.product.provider}</span>}
                     </div>
                   </td>
                   <td className="px-3 py-2.5">
                     <span className="line-clamp-1 max-w-[180px]">{mp.product.sellerName ?? <em className="text-muted">undisclosed</em>}</span>
                     <StatusBadge status={mp.product.sellerVerificationStatus} className="mt-1" />
+                    {mp.product.metadata?.sellerTrustBasis === "policy-trusted-domain" && <span className="mt-0.5 block text-[10px] text-muted">trusted by your policy</span>}
                   </td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">{mp.totalMinor == null ? <span className="text-warning">unknown</span> : formatMoney(mp.totalMinor, currency)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">
+                    {mp.totalMinor == null ? (
+                      <span className="text-warning">unknown</span>
+                    ) : mp.amountBasis === "CAP" ? (
+                      <span title="Shipping/tax undisclosed: upper bound enforced by a PayPal authorization hold">
+                        ≤ {formatMoney(mp.totalMinor, currency)}
+                        <span className="block text-[10px] font-sans uppercase tracking-wide text-cyan">spending cap</span>
+                      </span>
+                    ) : (
+                      formatMoney(mp.totalMinor, currency)
+                    )}
+                  </td>
                   <td className="px-3 py-2.5">{mp.trustScore == null ? "—" : <Bar value={mp.trustScore} tone="trust" />}</td>
                   <td className="px-3 py-2.5">{mp.evidenceCoverage == null ? "—" : <Bar value={mp.evidenceCoverage} tone="coverage" />}</td>
                   <td className="px-3 py-2.5 font-mono text-xs">{mp.recommendationRank ? `#${mp.recommendationRank}` : <span className="text-muted">not ranked</span>}</td>
@@ -101,12 +114,24 @@ function ProductDetail({ mp, currency }: { mp: MissionProductDTO; currency: stri
           <dd className="font-mono">{p.shippingMinor == null ? <span className="text-warning">not disclosed</span> : formatMoney(p.shippingMinor, p.currency)}</dd>
           <dt className="text-muted">Tax</dt>
           <dd className="font-mono">{p.taxMinor == null ? <span className="text-warning">not disclosed</span> : formatMoney(p.taxMinor, p.currency)}</dd>
-          <dt className="text-muted">All-in total</dt>
-          <dd className="font-mono">{mp.totalMinor == null ? <span className="text-warning">unknown</span> : formatMoney(mp.totalMinor, currency)}</dd>
+          <dt className="text-muted">{mp.amountBasis === "CAP" ? "Spending cap" : "All-in total"}</dt>
+          <dd className="font-mono">
+            {mp.totalMinor == null ? <span className="text-warning">unknown</span> : formatMoney(mp.totalMinor, currency)}
+            {mp.amountBasis === "CAP" && mp.allowanceMinor != null && <span className="block font-sans text-muted">includes {formatMoney(mp.allowanceMinor, currency)} allowance for undisclosed shipping/tax</span>}
+          </dd>
+          {p.metadata?.baselineUnitPriceMinor != null && (
+            <>
+              <dt className="text-muted">Reference price</dt>
+              <dd className="font-mono">
+                {formatMoney(p.metadata.baselineUnitPriceMinor, p.currency)}{" "}
+                <span className="font-sans text-muted">({(p.metadata.baselineSource ?? "provider").replace(/-/g, " ")})</span>
+              </dd>
+            </>
+          )}
           <dt className="text-muted">Delivery</dt>
           <dd>{p.shippingEstimateDays == null ? <span className="text-warning">no estimate</span> : `${p.shippingEstimateDays} days`}</dd>
           <dt className="text-muted">Stock</dt>
-          <dd>{p.stockQuantity ?? <span className="text-warning">not disclosed</span>}</dd>
+          <dd>{p.stockQuantity ?? (p.metadata?.inStock ? "in stock (quantity not disclosed)" : <span className="text-warning">not disclosed</span>)}</dd>
           {Object.entries(p.attributes).map(([k, v]) => (
             <Fragment key={k}>
               <dt className="text-muted">{k}</dt>
@@ -114,6 +139,11 @@ function ProductDetail({ mp, currency }: { mp: MissionProductDTO; currency: stri
             </Fragment>
           ))}
         </dl>
+        {p.metadata?.offerUrl && (
+          <a href={p.metadata.offerUrl} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex items-center gap-1 text-cyan hover:underline">
+            View offer at {p.sellerId ?? "retailer"} <ExternalLink className="h-3 w-3" aria-hidden />
+          </a>
+        )}
         {p.description && (
           <p className="rounded border border-line bg-bg-2 p-2 text-muted">
             <span className="block text-[10px] uppercase tracking-wider">Listing text (untrusted, shown as data)</span>

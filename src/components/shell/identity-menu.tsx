@@ -62,7 +62,7 @@ export function IdentityMenu({ session }: { session: SessionInfo | undefined }) 
               Approver privileges
               <span className="block text-[11px] text-muted">Toggle to demo role-gated approval</span>
             </span>
-            <input type="checkbox" role="menuitemcheckbox" aria-checked={isApprover} checked={isApprover} disabled={busy} onChange={toggle} className="h-4 w-4 accent-[#56E0F0]" />
+            <input type="checkbox" role="menuitemcheckbox" aria-checked={isApprover} checked={isApprover} disabled={busy} onChange={toggle} className="h-4 w-4 accent-[#6FE3EE]" />
           </label>
           <p className="mt-3 text-[11px] leading-relaxed text-muted">{session.demoAuthNotice}</p>
         </div>

@@ -1,18 +1,24 @@
+/** Original AEGIS mark: an orbital ring around a faceted core. */
 export function AegisMark({ className = "h-6 w-6" }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden>
-      <path d="M16 2 4 7v8c0 7.2 5 12.9 12 15 7-2.1 12-7.8 12-15V7L16 2Z" fill="none" stroke="#56E0F0" strokeWidth="1.6" />
-      <path d="M16 8 9.5 11v4.4c0 3.9 2.7 7 6.5 8.2 3.8-1.2 6.5-4.3 6.5-8.2V11L16 8Z" fill="#56E0F0" fillOpacity=".14" stroke="#6685FF" strokeWidth="1.2" />
-      <circle cx="16" cy="15.5" r="2.2" fill="#56E0F0" />
+      <circle cx="16" cy="16" r="13.2" fill="none" stroke="#6FE3EE" strokeOpacity=".55" strokeWidth="1" />
+      <ellipse cx="16" cy="16" rx="13.2" ry="4.6" fill="none" stroke="#B8DCFF" strokeOpacity=".5" strokeWidth=".8" transform="rotate(-28 16 16)" />
+      <path d="M16 7.5 23 16l-7 8.5L9 16Z" fill="#6FE3EE" fillOpacity=".12" stroke="#F2EEE6" strokeOpacity=".9" strokeWidth="1.1" strokeLinejoin="round" />
+      <path d="M16 7.5v17M9 16h14" stroke="#6FE3EE" strokeOpacity=".55" strokeWidth=".7" />
+      <circle cx="16" cy="16" r="1.9" fill="#6FE3EE" />
     </svg>
   );
 }
 
-export function AegisWordmark() {
+export function AegisWordmark({ subtitle = false }: { subtitle?: boolean }) {
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex items-center gap-2.5">
       <AegisMark />
-      <span className="font-mono text-sm font-semibold tracking-[0.3em] text-fg">AEGIS</span>
+      <span className="flex flex-col leading-none">
+        <span className="font-mono text-[13px] font-medium tracking-[0.42em] text-fg">AEGIS</span>
+        {subtitle && <span className="mt-1 font-mono text-[9px] tracking-[0.24em] text-faint">AI COMMERCE GUARDIAN</span>}
+      </span>
     </span>
   );
 }

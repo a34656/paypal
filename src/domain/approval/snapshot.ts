@@ -15,6 +15,9 @@ export interface ApprovalSnapshot {
   shippingMinor: number;
   taxMinor: number;
   totalMinor: number;
+  /** EXACT = disclosed all-in total; CAP = upper bound enforced by a PayPal authorization hold. */
+  amountBasis: "EXACT" | "CAP";
+  allowanceMinor: number;
   currency: string;
   policyVersion: number;
   /** ISO-8601 UTC timestamp. */
@@ -33,6 +36,8 @@ export function snapshotHash(s: ApprovalSnapshot): string {
     shippingMinor: s.shippingMinor,
     taxMinor: s.taxMinor,
     totalMinor: s.totalMinor,
+    amountBasis: s.amountBasis,
+    allowanceMinor: s.allowanceMinor,
     currency: s.currency,
     policyVersion: s.policyVersion,
     expiresAt: s.expiresAt,

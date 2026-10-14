@@ -62,3 +62,21 @@ describe("optimizer", () => {
     expect(optimize(cands, mission, DEFAULT_POLICY)).toEqual(res); // deterministic
   });
 });
+
+describe("optimizer with real-catalogue offers", () => {
+  it("prefers a listing that states the requirement in its title over one that is silent, and exact totals over caps", async () => {
+    const { optimize } = await import("@/domain/agents/optimizer");
+    const { assessRisk } = await import("@/domain/risk/engine");
+    const { DEFAULT_POLICY } = await import("@/domain/policy/schema");
+    const m = { title: "Cables", objective: "Cables", productQuery: "usb-c cable 2m", category: "cables", quantity: 10, budgetMinor: 40_000, currency: "USD" as const, deadlineDays: null, requiredAttributes: { length: "2m" } };
+    const base = { provider: "channel3", description: null, category: "cables", shippingMinor: null, taxMinor: null, currency: "USD", imageUrl: null, sellerId: "x.com", sellerName: "X", sellerVerificationStatus: "VERIFIED" as const, shippingEstimateDays: null, stockQuantity: null, inStock: true, attributes: {}, isDemoData: false, baselineUnitPriceMinor: null };
+    const silent = { ...base, providerProductId: "a", title: "Boost Charge USB-C cable", unitPriceMinor: 1_499 };
+    const stated = { ...base, providerProductId: "b", title: "Rode SC27 2m USB-C cable", unitPriceMinor: 1_600 };
+    const cand = (p: typeof silent, key: string, basis: "CAP" | "EXACT" = "CAP") => ({ key, title: p.title, totalMinor: p.unitPriceMinor * 10 + 2_400, currency: "USD", category: "cables", sellerVerified: true, risk: assessRisk(p, m, { costBounded: true }), amountBasis: basis });
+    const r = optimize([cand(silent, "silent"), cand(stated, "stated")], m, { ...DEFAULT_POLICY, minEvidenceCoverage: 0 });
+    expect(r.find((x) => x.key === "stated")!.rank).toBe(1);
+    const r2 = optimize([cand(stated, "cap"), cand(silent, "exact", "EXACT")], m, { ...DEFAULT_POLICY, minEvidenceCoverage: 0 });
+    expect(r2.find((x) => x.key === "exact")!.rank).toBe(1);
+    expect(r2.find((x) => x.key === "cap")!.explanation).toMatch(/spending cap/);
+  });
+});

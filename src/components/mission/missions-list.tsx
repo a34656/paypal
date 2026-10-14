@@ -25,7 +25,7 @@ export interface MissionRow {
   createdAt: string;
 }
 
-const STATUSES = ["AWAITING_CONFIRMATION", "QUEUED", "RUNNING", "AWAITING_APPROVAL", "READY_FOR_CHECKOUT", "CHECKOUT_IN_PROGRESS", "CAPTURE_PENDING", "COMPLETED", "BLOCKED", "DENIED", "EXPIRED", "FAILED"];
+const STATUSES = ["AWAITING_CONFIRMATION", "QUEUED", "RUNNING", "AWAITING_APPROVAL", "READY_FOR_CHECKOUT", "CHECKOUT_IN_PROGRESS", "CAPTURE_PENDING", "HOLD_PLACED", "COMPLETED", "REFUNDED", "BLOCKED", "DENIED", "EXPIRED", "FAILED"];
 
 export function MissionsList({ initialStatus }: { initialStatus: string }) {
   const [q, setQ] = useState("");

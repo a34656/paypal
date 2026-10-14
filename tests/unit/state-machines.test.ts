@@ -61,8 +61,18 @@ describe("payment state machine", () => {
     for (const t of ["FAILED", "CANCELLED", "BLOCKED", "EXPIRED", "REFUNDED"] as PaymentStatus[]) expect(PAYMENT_TRANSITIONS[t]).toEqual([]);
   });
 
-  it("capture only from CAPTURE_PENDING (no capture without the CAS step)", () => {
-    for (const from of PAY) if (from !== "CAPTURE_PENDING" && from !== "CAPTURE_PROVIDER_PENDING" && from !== "DISPUTED") expect(canTransitionPayment(from, "CAPTURED")).toBe(false);
+  it("capture only from CAPTURE_PENDING / SETTLE_PENDING (no capture without the CAS step)", () => {
+    for (const from of PAY) if (from !== "CAPTURE_PENDING" && from !== "SETTLE_PENDING" && from !== "CAPTURE_PROVIDER_PENDING") expect(canTransitionPayment(from, "CAPTURED")).toBe(false);
+  });
+
+  it("an authorization hold is settled only through SETTLE_PENDING and never re-authorised", () => {
+    expect(PAYMENT_TRANSITIONS.AUTHORIZED).toEqual(["SETTLE_PENDING", "CANCELLED", "EXPIRED", "FAILED"]);
+    for (const from of PAY) if (from !== "AUTHORIZE_PENDING") expect(canTransitionPayment(from, "AUTHORIZED")).toBe(false);
+    for (const from of PAY) if (from !== "AUTHORIZED") expect(canTransitionPayment(from, "SETTLE_PENDING")).toBe(false);
+    for (const to of ["AUTHORIZED", "SETTLE_PENDING", "AUTHORIZE_PENDING"] as PaymentStatus[]) {
+      expect(canTransitionPayment("CAPTURED", to)).toBe(false);
+      expect(canTransitionPayment("PARTIALLY_REFUNDED", to)).toBe(false);
+    }
   });
 });
 

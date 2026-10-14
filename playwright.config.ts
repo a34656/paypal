@@ -27,7 +27,8 @@ export default defineConfig({
       PAYPAL_CLIENT_ID: "",
       PAYPAL_CLIENT_SECRET: "",
       NEXT_PUBLIC_PAYPAL_CLIENT_ID: "",
-      ANTHROPIC_API_KEY: "",
+      GEMINI_API_KEY: "",
+      PRODUCT_PROVIDER: "demo",
     },
   },
 });

@@ -98,6 +98,27 @@ export function allInTotal(input: {
   return { itemTotalMinor, shippingMinor: input.shippingMinor, taxMinor: input.taxMinor, totalMinor };
 }
 
+export interface SpendCap {
+  itemTotalMinor: number;
+  /** Upper-bound allowance for undisclosed shipping + tax, rounded UP to a whole minor unit. */
+  allowanceMinor: number;
+  /** itemTotal + allowance: the most a PayPal authorization hold will let anyone capture. */
+  totalMinor: number;
+  allowancePct: number;
+}
+
+/**
+ * Spending cap for a purchase whose shipping/tax are not disclosed. Integer-only.
+ * Returns null when the policy disables caps (pct = 0).
+ */
+export function spendCap(input: { unitPriceMinor: number; quantity: number; allowancePct: number }): SpendCap | null {
+  if (!Number.isSafeInteger(input.allowancePct) || input.allowancePct <= 0 || input.allowancePct > 100) return null;
+  const itemTotalMinor = multiplyMinor(input.unitPriceMinor, input.quantity);
+  const allowanceMinor = Math.ceil((itemTotalMinor * input.allowancePct) / 100);
+  const totalMinor = addMinor(itemTotalMinor, allowanceMinor);
+  return { itemTotalMinor, allowanceMinor, totalMinor, allowancePct: input.allowancePct };
+}
+
 /** Minor units → PayPal decimal string ("1234.50", JPY "1234"). Exact, integer-only. */
 export function toProviderDecimal(minor: number, currency: string): string {
   assertMinor(minor);

@@ -57,6 +57,7 @@ export function AuditView({ initialMissionId }: { initialMissionId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [open, setOpen] = useState<string | null>(null);
+  const [q, setQ] = useState("");
   const params = new URLSearchParams({ take: "200" });
   if (actor) params.set("actor", actor);
   if (eventType) params.set("eventType", eventType);
@@ -69,6 +70,7 @@ export function AuditView({ initialMissionId }: { initialMissionId: string }) {
   return (
     <div className="space-y-4">
       <PageHeader eyebrow="Accountability" title="Audit log" subtitle="Append-only and hash-chained: hash = SHA-256(prevHash ‖ canonical(event)). Every financial state change commits with its event in one transaction." actions={<ChainIndicator />} />
+      <Input aria-label="Search loaded events" placeholder="Search event, actor, reason, decision…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-md" />
       <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Select aria-label="Filter by agent or actor" value={actor} onChange={(e) => setActor(e.target.value)}>
           <option value="">All actors</option>
@@ -118,13 +120,14 @@ export function AuditView({ initialMissionId }: { initialMissionId: string }) {
                   <th className="px-3 py-2">Event</th>
                   <th className="px-3 py-2">Actor</th>
                   <th className="px-3 py-2">Outcome</th>
+                  <th className="px-3 py-2">State · decision</th>
                   <th className="px-3 py-2">Mode</th>
                   <th className="px-3 py-2">Mission</th>
                   <th className="px-3 py-2">Hash</th>
                 </tr>
               </thead>
               <tbody>
-                {data?.events.map((e) => (
+                {data?.events.filter((e) => matches(e, q)).map((e) => (
                   <Fragment key={e.id}>
                     <tr className="cursor-pointer border-b border-line/50 hover:bg-elevated/40" onClick={() => setOpen(open === e.id ? null : e.id)}>
                       <td className="px-3 py-1.5 font-mono text-muted">
@@ -138,14 +141,22 @@ export function AuditView({ initialMissionId }: { initialMissionId: string }) {
                       <td className="px-3 py-1.5">
                         <StatusBadge status={e.outcome} />
                       </td>
+                      <td className="max-w-[260px] px-3 py-1.5">
+                        <StateCell metadata={e.metadata} />
+                      </td>
                       <td className="px-3 py-1.5">
                         <ModeBadge mode={e.mode} />
                       </td>
                       <td className="px-3 py-1.5">
                         {e.missionId ? (
-                          <Link href={`/missions/${e.missionId}`} className="font-mono text-cyan hover:underline" onClick={(ev) => ev.stopPropagation()}>
-                            {e.missionId.slice(0, 10)}…
-                          </Link>
+                          <span className="flex items-center gap-2">
+                            <Link href={`/missions/${e.missionId}`} className="font-mono text-cyan hover:underline" onClick={(ev) => ev.stopPropagation()}>
+                              {e.missionId.slice(0, 10)}…
+                            </Link>
+                            <Link href={`/missions/${e.missionId}#replay`} className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint hover:text-fg" onClick={(ev) => ev.stopPropagation()} aria-label={`Replay mission ${e.missionId}`}>
+                              replay
+                            </Link>
+                          </span>
                         ) : (
                           "—"
                         )}
@@ -156,7 +167,7 @@ export function AuditView({ initialMissionId }: { initialMissionId: string }) {
                     </tr>
                     {open === e.id && (
                       <tr className="border-b border-line bg-bg/60">
-                        <td colSpan={8} className="px-4 py-3">
+                        <td colSpan={9} className="px-4 py-3">
                           <div className="grid gap-3 lg:grid-cols-2">
                             <pre className="max-h-64 overflow-auto rounded bg-bg-2 p-2 font-mono text-[11px] text-muted">{JSON.stringify(e.metadata, null, 2)}</pre>
                             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px]">
@@ -186,5 +197,39 @@ export function AuditView({ initialMissionId }: { initialMissionId: string }) {
         )}
       </Panel>
     </div>
+  );
+}
+
+type Meta = Record<string, unknown>;
+const metaOf = (m: unknown): Meta => (m && typeof m === "object" ? (m as Meta) : {});
+
+function matches(e: { eventType: string; actor: string; metadata: unknown }, q: string): boolean {
+  if (!q.trim()) return true;
+  const hay = `${e.eventType} ${e.actor} ${JSON.stringify(e.metadata ?? {})}`.toLowerCase();
+  return q.toLowerCase().split(/\s+/).every((t) => hay.includes(t));
+}
+
+/** Before → after state, policy decision and reason, when the event recorded them. */
+function StateCell({ metadata }: { metadata: unknown }) {
+  const m = metaOf(metadata);
+  const from = typeof m.from === "string" ? m.from : null;
+  const to = typeof m.to === "string" ? m.to : null;
+  const decision = typeof m.decision === "string" ? m.decision : null;
+  const reason = typeof m.reason === "string" ? m.reason : null;
+  if (!from && !to && !decision && !reason) return <span className="text-faint">—</span>;
+  return (
+    <span className="block">
+      {(from || to) && (
+        <span className="block font-mono text-[11px]">
+          <span className="text-faint">{from ?? "·"}</span> <span className="text-faint">→</span> <span className="text-fg/90">{to ?? "·"}</span>
+        </span>
+      )}
+      {decision && <span className="block font-mono text-[10.5px] text-warning">{decision.replace(/_/g, " ")}</span>}
+      {reason && (
+        <span className="block truncate text-[11px] text-muted" title={reason}>
+          {reason}
+        </span>
+      )}
+    </span>
   );
 }

@@ -20,14 +20,14 @@ import { normalizeCandidate, getProductProvider, type ProductSearch } from "@/do
 import { DEMO_PRODUCTS } from "@/domain/providers/demo-catalog";
 import { DeterministicAi, type AiProvider } from "@/domain/ai/provider";
 import type { MissionConstraints, ProductCandidate } from "@/domain/types";
-import { allInTotal, formatMoney } from "@/lib/money";
+import { allInTotal, formatMoney, spendCap } from "@/lib/money";
 import { appendAudit } from "./audit";
 import { casMission } from "./cas";
 import type { Db, Tx } from "./db";
 import { AppError } from "./errors";
 import { confirmedConstraints, MAX_LLM_CALLS_PER_MISSION } from "./missions";
 import { latestPolicy } from "./policies";
-import { getAiProvider } from "./ai/anthropic";
+import { getAiProvider } from "./ai/gemini";
 
 export type StepName = "SCOUT" | "RISK" | "OPTIMIZE" | "POLICY";
 
@@ -90,8 +90,36 @@ function demoBaseline(providerProductId: string): number | null {
   return DEMO_PRODUCTS.find((p) => p.providerProductId === providerProductId)?.baselineUnitPriceMinor ?? null;
 }
 
+export interface PurchaseAmounts {
+  basis: "EXACT" | "CAP";
+  itemTotalMinor: number;
+  shippingMinor: number;
+  taxMinor: number;
+  /** 0 for EXACT. */
+  allowanceMinor: number;
+  /** Exact all-in total, or the spending cap. */
+  totalMinor: number;
+}
+
+/**
+ * The single place that turns product data into an authorisable amount.
+ * EXACT when shipping and tax are disclosed; otherwise a policy spending CAP (item total +
+ * allowance %), or null when the policy disables caps. Throws only on overflow.
+ */
+export function purchaseAmounts(
+  product: Pick<Product, "unitPriceMinor" | "shippingMinor" | "taxMinor">,
+  quantity: number,
+  allowancePct: number,
+): PurchaseAmounts | null {
+  const exact = allInTotal({ unitPriceMinor: product.unitPriceMinor, quantity, shippingMinor: product.shippingMinor, taxMinor: product.taxMinor });
+  if (exact) return { basis: "EXACT", ...exact, allowanceMinor: 0 };
+  const cap = spendCap({ unitPriceMinor: product.unitPriceMinor, quantity, allowancePct });
+  if (!cap) return null;
+  return { basis: "CAP", itemTotalMinor: cap.itemTotalMinor, shippingMinor: 0, taxMinor: 0, allowanceMinor: cap.allowanceMinor, totalMinor: cap.totalMinor };
+}
+
 export function toCandidate(p: Product): ProductCandidate {
-  const meta = (p.metadata ?? {}) as { baselineUnitPriceMinor?: number | null };
+  const meta = (p.metadata ?? {}) as { baselineUnitPriceMinor?: number | null; baselineSource?: string | null; inStock?: boolean | null; offerUrl?: string | null };
   return {
     provider: p.provider,
     providerProductId: p.providerProductId,
@@ -111,13 +139,16 @@ export function toCandidate(p: Product): ProductCandidate {
     attributes: (p.attributes ?? {}) as Record<string, string>,
     isDemoData: p.isDemoData,
     baselineUnitPriceMinor: meta.baselineUnitPriceMinor ?? (p.isDemoData ? demoBaseline(p.providerProductId) : null),
+    baselineSource: meta.baselineSource ?? null,
+    inStock: meta.inStock ?? null,
+    offerUrl: meta.offerUrl ?? null,
   };
 }
 
 export function snapshotFor(
-  mission: { budgetMinor: number; currency: string; quantity: number },
+  mission: { budgetMinor: number; currency: string; quantity: number; maxRiskScore?: number | null },
   product: Product,
-  mp: Pick<MissionProduct, "totalMinor" | "riskScore" | "evidenceCoverage" | "riskEvidence">,
+  mp: Pick<MissionProduct, "totalMinor" | "riskScore" | "evidenceCoverage" | "riskEvidence" | "amountBasis" | "allowanceMinor">,
 ): PolicySnapshot {
   const evidence = (mp.riskEvidence ?? null) as RiskAssessment | null;
   return {
@@ -129,11 +160,15 @@ export function snapshotFor(
     shippingMinor: product.shippingMinor,
     taxMinor: product.taxMinor,
     totalMinor: mp.totalMinor,
+    amountBasis: mp.amountBasis === "CAP" ? "CAP" : mp.totalMinor != null ? "EXACT" : null,
+    allowanceMinor: mp.allowanceMinor,
     category: product.category,
     sellerVerification: product.sellerVerificationStatus,
     riskScore: mp.riskScore,
     evidenceCoverage: mp.evidenceCoverage,
     requirementMismatch: evidence ? evidence.requirementMismatch : null,
+    injectionSignals: evidence?.injectionSignals ?? [],
+    missionMaxRiskScore: mission.maxRiskScore ?? null,
   };
 }
 
@@ -160,11 +195,19 @@ export async function duplicateDetected(
 
 async function stepScout(db: Db, mission: Mission, c: MissionConstraints, deps: RunnerDeps): Promise<StepResult> {
   const provider = deps.products ?? getProductProvider();
+  const { config } = await latestPolicy(db, mission.ownerId);
+  const trusted = new Set(config.trustedSellerDomains.map((d) => d.toLowerCase()));
   const raw = await provider.search({ query: c.productQuery, category: c.category, quantity: c.quantity, currency: c.currency });
   const valid = raw.map(normalizeCandidate).filter((x): x is ProductCandidate => x !== null);
   const rejected = raw.length - valid.length;
   const ids: string[] = [];
-  for (const cand of valid) {
+  let capped = 0;
+  for (const cand0 of valid) {
+    // Real catalogues do not verify sellers; the owner's policy may trust specific retailer domains.
+    const cand: ProductCandidate =
+      !cand0.isDemoData && cand0.sellerVerificationStatus === "UNKNOWN" && cand0.sellerId && trusted.has(cand0.sellerId.toLowerCase())
+        ? { ...cand0, sellerVerificationStatus: "VERIFIED" }
+        : cand0;
     const data = {
       title: cand.title,
       description: cand.description,
@@ -181,28 +224,36 @@ async function stepScout(db: Db, mission: Mission, c: MissionConstraints, deps: 
       stockQuantity: cand.stockQuantity,
       attributes: cand.attributes,
       isDemoData: cand.isDemoData,
-      metadata: { baselineUnitPriceMinor: cand.baselineUnitPriceMinor, baselineSource: cand.isDemoData ? "seeded-demo" : "provider" },
+      metadata: {
+        baselineUnitPriceMinor: cand.baselineUnitPriceMinor,
+        baselineSource: cand.isDemoData ? "seeded-demo" : (cand.baselineSource ?? "provider"),
+        inStock: cand.inStock ?? null,
+        offerUrl: cand.offerUrl ?? null,
+        sellerTrustBasis: cand.sellerVerificationStatus === "VERIFIED" && !cand.isDemoData ? "policy-trusted-domain" : null,
+      },
     };
     const product = await db.product.upsert({
       where: { provider_providerProductId: { provider: cand.provider, providerProductId: cand.providerProductId } },
       create: { provider: cand.provider, providerProductId: cand.providerProductId, ...data },
       update: data,
     });
-    let totalMinor: number | null = null;
+    let amounts: PurchaseAmounts | null = null;
     try {
-      totalMinor = allInTotal({ unitPriceMinor: product.unitPriceMinor, quantity: c.quantity, shippingMinor: product.shippingMinor, taxMinor: product.taxMinor })?.totalMinor ?? null;
+      amounts = purchaseAmounts(product, c.quantity, config.costAllowancePct);
     } catch {
-      totalMinor = null; // overflow → unknown → fails closed downstream
+      amounts = null; // overflow → unknown → fails closed downstream
     }
+    if (amounts?.basis === "CAP") capped += 1;
+    const row = { quantity: c.quantity, totalMinor: amounts?.totalMinor ?? null, amountBasis: amounts?.basis ?? null, allowanceMinor: amounts ? amounts.allowanceMinor : null };
     await db.missionProduct.upsert({
       where: { missionId_productId: { missionId: mission.id, productId: product.id } },
-      create: { missionId: mission.id, productId: product.id, quantity: c.quantity, totalMinor },
-      update: { quantity: c.quantity, totalMinor },
+      create: { missionId: mission.id, productId: product.id, ...row },
+      update: row,
     });
     ids.push(product.providerProductId);
   }
   return {
-    output: { provider: provider.name, candidates: ids.length, rejected, providerProductIds: ids, demo: provider.isDemo },
+    output: { provider: provider.name, candidates: ids.length, rejected, capped, providerProductIds: ids, demo: provider.isDemo, fallbackReason: provider.lastFallbackReason ?? null },
     next: "SCOUTED",
   };
 }
@@ -211,7 +262,7 @@ async function stepRisk(db: Db, mission: Mission, c: MissionConstraints): Promis
   const mps = await db.missionProduct.findMany({ where: { missionId: mission.id }, include: { product: true } });
   const summary: Array<Record<string, unknown>> = [];
   for (const mp of mps) {
-    const a = assessRisk(toCandidate(mp.product), c);
+    const a = assessRisk(toCandidate(mp.product), c, { costBounded: mp.amountBasis === "CAP" });
     await db.missionProduct.update({
       where: { id: mp.id },
       data: { riskScore: a.riskScore, riskLevel: a.level, evidenceCoverage: a.evidenceCoverage, riskEvidence: a as unknown as object },
@@ -233,6 +284,7 @@ async function stepOptimize(db: Db, mission: Mission, c: MissionConstraints): Pr
       category: mp.product.category,
       sellerVerified: mp.product.sellerVerificationStatus === "VERIFIED",
       risk: mp.riskEvidence as unknown as RiskAssessment,
+      amountBasis: mp.amountBasis === "CAP" ? "CAP" : "EXACT",
     })),
     c,
     config,
@@ -253,6 +305,8 @@ async function stepPolicy(db: Db, mission: Mission, c: MissionConstraints, deps:
   const decisions: Array<Record<string, unknown>> = [];
   let recommended: (typeof mps)[number] | null = null;
   let recommendedDecision: "ALLOW_CHECKOUT" | "REQUIRE_APPROVAL" | "BLOCK" = "BLOCK";
+  // Why each offer cannot proceed, gathered from this run's results (mps holds pre-update rows).
+  const blockReasons: string[] = [];
 
   for (const mp of mps) {
     const dup = await duplicateDetected(db, {
@@ -268,6 +322,8 @@ async function stepPolicy(db: Db, mission: Mission, c: MissionConstraints, deps:
     const result = evaluate(snapshotFor(c, mp.product, mp), config, { duplicateDetected: dup.detected });
     await db.missionProduct.update({ where: { id: mp.id }, data: { policyDecision: result.decision, policyResult: result as unknown as object } });
     decisions.push({ providerProductId: mp.product.providerProductId, decision: result.decision, rank: mp.recommendationRank });
+    if (result.decision === "BLOCK") blockReasons.push(`${mp.product.title}: ${result.checks.find((ch) => ch.result === "BLOCK")?.detail ?? "blocked by policy."}`);
+    else if (!mp.eligible) blockReasons.push(`${mp.product.title}: ${(mp.ineligibleReasons as string[] | null)?.[0] ?? "not eligible."}`);
     if (mp.eligible && result.decision !== "BLOCK" && mp.recommendationRank != null) {
       if (!recommended || (recommended.recommendationRank ?? 99) > mp.recommendationRank) {
         recommended = mp;
@@ -294,7 +350,7 @@ async function stepPolicy(db: Db, mission: Mission, c: MissionConstraints, deps:
       : null,
     decision: recommended ? recommendedDecision : "BLOCK",
     deterministicExplanation: recommended?.optimizerExplanation ?? "",
-    reasons: recommended ? [] : mps.flatMap((mp) => ((mp.policyResult as { reasons?: string[] } | null)?.reasons ?? []).slice(0, 1)),
+    reasons: recommended ? [] : blockReasons.length > 0 ? blockReasons : ["The product provider returned no offers matching this mission; nothing can be purchased."],
   };
   const explanation = canCallLlm
     ? await ai.explainRecommendation(explainInput)

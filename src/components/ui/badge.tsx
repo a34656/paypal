@@ -16,7 +16,7 @@ const TONE: Record<Tone, string> = {
 
 export function Badge({ tone = "neutral", children, className, icon }: { tone?: Tone; children: ReactNode; className?: string; icon?: ReactNode }) {
   return (
-    <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide", TONE[tone], className)}>
+    <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-[3px] border px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.1em]", TONE[tone], className)}>
       {icon}
       {children}
     </span>
@@ -57,6 +57,11 @@ const STATUS: Record<string, { tone: Tone; label?: string; icon: ReactNode }> = 
   HIGH: { tone: "critical", label: "High risk", icon: <AlertTriangle className="h-3 w-3" aria-hidden /> },
   CRITICAL: { tone: "critical", label: "Critical risk", icon: <Ban className="h-3 w-3" aria-hidden /> },
   REFUNDED: { tone: "purple", icon: <Info className="h-3 w-3" aria-hidden /> },
+  PARTIALLY_REFUNDED: { tone: "purple", label: "Partially refunded", icon: <Info className="h-3 w-3" aria-hidden /> },
+  AUTHORIZE_PENDING: { tone: "warning", label: "Placing hold", icon: <Clock className="h-3 w-3" aria-hidden /> },
+  AUTHORIZED: { tone: "cyan", label: "Hold placed", icon: <ShieldCheck className="h-3 w-3" aria-hidden /> },
+  HOLD_PLACED: { tone: "cyan", label: "Hold placed", icon: <ShieldCheck className="h-3 w-3" aria-hidden /> },
+  SETTLE_PENDING: { tone: "warning", label: "Settling", icon: <Clock className="h-3 w-3" aria-hidden /> },
   DISPUTED: { tone: "warning", icon: <AlertTriangle className="h-3 w-3" aria-hidden /> },
 };
 

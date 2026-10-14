@@ -1,7 +1,8 @@
 import "server-only";
 /**
  * The only module that talks to PayPal's REST API.
- * OAuth token cache, Orders v2 create/get/capture, webhook signature verification.
+ * OAuth token cache, Orders v2 create/get/capture/authorize, Payments v2 authorization
+ * capture/void and capture refunds, webhook signature verification.
  * Timeouts and bounded retries; retries reuse the same PayPal-Request-Id so they are idempotent.
  */
 import { fromProviderDecimal, toProviderDecimal } from "@/lib/money";
@@ -9,7 +10,10 @@ import {
   ProviderError,
   type CreateOrderInput,
   type PaymentGateway,
+  type ProviderAuthorization,
+  type ProviderAuthorizationStatus,
   type ProviderCapture,
+  type ProviderRefund,
   type ProviderCaptureStatus,
   type ProviderOrder,
   type ProviderOrderStatus,
@@ -46,6 +50,34 @@ function parseMoney(v: unknown, currency: string | null): number | null {
   }
 }
 
+export function parsePayPalCapture(c: unknown): ProviderCapture {
+  const co = asObj(c);
+  const camount = asObj(co.amount);
+  const ccur = asStr(camount.currency_code);
+  return {
+    id: asStr(co.id) ?? "",
+    status: (asStr(co.status) ?? "FAILED") as ProviderCaptureStatus,
+    currency: ccur,
+    amountMinor: parseMoney(camount, ccur),
+    statusReason: asStr(asObj(co.status_details).reason),
+  };
+}
+
+export function parsePayPalRefund(r: unknown): ProviderRefund {
+  const ro = asObj(r);
+  const amount = asObj(ro.amount);
+  const cur = asStr(amount.currency_code);
+  const up = Array.isArray(ro.links) ? ro.links.map(asObj).find((l) => asStr(l.rel) === "up") : undefined;
+  const captureId = up ? (asStr(up.href)?.match(/\/captures\/([A-Z0-9]+)/)?.[1] ?? null) : null;
+  return {
+    id: asStr(ro.id) ?? "",
+    status: (asStr(ro.status) ?? "FAILED") as ProviderRefund["status"],
+    currency: cur,
+    amountMinor: parseMoney(amount, cur),
+    captureId,
+  };
+}
+
 /** Parses a PayPal Orders v2 order representation into the gateway's typed shape. */
 export function parsePayPalOrder(body: unknown, debugId: string | null): ProviderOrder {
   const o = asObj(body);
@@ -54,18 +86,20 @@ export function parsePayPalOrder(body: unknown, debugId: string | null): Provide
   const currency = asStr(amount.currency_code);
   const breakdown = asObj(amount.breakdown);
   const payments = asObj(pu.payments);
-  const captures: ProviderCapture[] = (Array.isArray(payments.captures) ? payments.captures : []).map((c) => {
-    const co = asObj(c);
-    const camount = asObj(co.amount);
-    const ccur = asStr(camount.currency_code);
+  const captures: ProviderCapture[] = (Array.isArray(payments.captures) ? payments.captures : []).map(parsePayPalCapture);
+  const authorizations: ProviderAuthorization[] = (Array.isArray(payments.authorizations) ? payments.authorizations : []).map((a) => {
+    const ao = asObj(a);
+    const aamount = asObj(ao.amount);
+    const acur = asStr(aamount.currency_code);
     return {
-      id: asStr(co.id) ?? "",
-      status: (asStr(co.status) ?? "FAILED") as ProviderCaptureStatus,
-      currency: ccur,
-      amountMinor: parseMoney(camount, ccur),
-      statusReason: asStr(asObj(co.status_details).reason),
+      id: asStr(ao.id) ?? "",
+      status: (asStr(ao.status) ?? "DENIED") as ProviderAuthorizationStatus,
+      currency: acur,
+      amountMinor: parseMoney(aamount, acur),
+      expirationTime: asStr(ao.expiration_time),
     };
   });
+  const refunds: ProviderRefund[] = (Array.isArray(payments.refunds) ? payments.refunds : []).map(parsePayPalRefund);
   return {
     id: asStr(o.id) ?? "",
     status: (asStr(o.status) ?? "CREATED") as ProviderOrderStatus,
@@ -79,6 +113,8 @@ export function parsePayPalOrder(body: unknown, debugId: string | null): Provide
     invoiceId: asStr(pu.invoice_id),
     payeeMerchantId: asStr(asObj(pu.payee).merchant_id),
     captures,
+    authorizations,
+    refunds,
     debugId,
   };
 }
@@ -86,6 +122,23 @@ export function parsePayPalOrder(body: unknown, debugId: string | null): Provide
 export function buildCreateOrderBody(input: CreateOrderInput) {
   const c = input.amount.currency;
   const money = (minor: number) => ({ currency_code: c, value: toProviderDecimal(minor, c) });
+  if (input.intent === "AUTHORIZE") {
+    // Spending cap: only the maximum is stated. Shipping/tax are unknown, so no breakdown is
+    // claimed; the real amount is captured later against the authorization.
+    return {
+      intent: "AUTHORIZE",
+      purchase_units: [
+        {
+          reference_id: input.customId,
+          custom_id: input.customId,
+          invoice_id: input.invoiceId,
+          description: input.description.slice(0, 127),
+          soft_descriptor: "AEGIS HOLD",
+          amount: money(input.amount.totalMinor),
+        },
+      ],
+    };
+  }
   return {
     intent: "CAPTURE",
     purchase_units: [
@@ -108,6 +161,11 @@ export function buildCreateOrderBody(input: CreateOrderInput) {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** PayPal resource ids are uppercase alphanumerics; anything else never reaches a URL path. */
+function assertId(id: string, kind: string) {
+  if (!/^[A-Z0-9]{5,40}$/.test(id)) throw new ProviderError(`Invalid ${kind} id format`, null, null, null, false);
+}
 
 export class PayPalHttpGateway implements PaymentGateway {
   readonly provider = "paypal" as const;
@@ -221,6 +279,60 @@ export class PayPalHttpGateway implements PaymentGateway {
     });
     if (status !== 200 && status !== 201) this.fail("capture", status, body, debugId);
     return parsePayPalOrder(body, debugId);
+  }
+
+  async authorizeOrder(orderId: string, requestId: string): Promise<ProviderOrder> {
+    assertId(orderId, "order");
+    const token = await this.accessToken();
+    const { status, body, debugId } = await this.request(`/v2/checkout/orders/${orderId}/authorize`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "PayPal-Request-Id": requestId, Prefer: "return=representation" },
+    });
+    if (status !== 200 && status !== 201) this.fail("authorize", status, body, debugId);
+    return parsePayPalOrder(body, debugId);
+  }
+
+  async captureAuthorization(authorizationId: string, input: { amountMinor: number; currency: string; requestId: string; finalCapture: boolean }): Promise<ProviderCapture> {
+    assertId(authorizationId, "authorization");
+    const token = await this.accessToken();
+    const { status, body, debugId } = await this.request(`/v2/payments/authorizations/${authorizationId}/capture`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "PayPal-Request-Id": input.requestId, Prefer: "return=representation" },
+      body: JSON.stringify({
+        amount: { currency_code: input.currency, value: toProviderDecimal(input.amountMinor, input.currency) },
+        final_capture: input.finalCapture,
+      }),
+    });
+    if (status !== 200 && status !== 201) this.fail("authorization capture", status, body, debugId);
+    return parsePayPalCapture(body);
+  }
+
+  async voidAuthorization(authorizationId: string, requestId: string): Promise<void> {
+    assertId(authorizationId, "authorization");
+    const token = await this.accessToken();
+    const { status, body, debugId } = await this.request(`/v2/payments/authorizations/${authorizationId}/void`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "PayPal-Request-Id": requestId },
+    });
+    if (status === 204 || status === 200) return;
+    const issue = Array.isArray(asObj(body).details) ? asStr(asObj((asObj(body).details as unknown[])[0]).issue) : null;
+    if (status === 422 && issue === "AUTHORIZATION_ALREADY_VOIDED") return;
+    this.fail("void authorization", status, body, debugId);
+  }
+
+  async refundCapture(captureId: string, input: { amountMinor: number; currency: string; requestId: string; note: string }): Promise<ProviderRefund> {
+    assertId(captureId, "capture");
+    const token = await this.accessToken();
+    const { status, body, debugId } = await this.request(`/v2/payments/captures/${captureId}/refund`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "PayPal-Request-Id": input.requestId, Prefer: "return=representation" },
+      body: JSON.stringify({
+        amount: { currency_code: input.currency, value: toProviderDecimal(input.amountMinor, input.currency) },
+        note_to_payer: input.note.slice(0, 255),
+      }),
+    });
+    if (status !== 200 && status !== 201) this.fail("refund", status, body, debugId);
+    return { ...parsePayPalRefund(body), captureId };
   }
 
   /** POST /v1/notifications/verify-webhook-signature. Returns true only on SUCCESS. */

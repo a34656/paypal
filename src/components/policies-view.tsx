@@ -141,12 +141,22 @@ export function PoliciesView() {
               <Field label="Blocked categories" htmlFor="p-block">
                 <Input id="p-block" value={draft.blockedCategories.join(", ")} onChange={(e) => set("blockedCategories", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} />
               </Field>
+              <Field
+                label="Spending-cap allowance (%)"
+                htmlFor="p-cap"
+                hint="When a seller hides shipping/tax, AEGIS may request a PayPal authorization hold of item total + this %. Always needs an approver; 0 = block instead."
+              >
+                <Input id="p-cap" type="number" min={0} max={50} value={draft.costAllowancePct} onChange={(e) => set("costAllowancePct", Number(e.target.value))} />
+              </Field>
+              <Field label="Trusted retailer domains (comma-separated)" htmlFor="p-trusted" hint="Offers from these domains count as verified sellers. Real catalogues do not verify sellers themselves.">
+                <Input id="p-trusted" value={draft.trustedSellerDomains.join(", ")} onChange={(e) => set("trustedSellerDomains", e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean))} />
+              </Field>
             </div>
             <fieldset className="space-y-2">
               <legend className="mb-1 text-xs font-medium text-muted">Rules</legend>
               {FLAGS.map(([k, label]) => (
                 <label key={k} className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={draft[k]} onChange={(e) => set(k, e.target.checked)} className="h-4 w-4 accent-[#56E0F0]" />
+                  <input type="checkbox" checked={draft[k]} onChange={(e) => set(k, e.target.checked)} className="h-4 w-4 accent-[#6FE3EE]" />
                   {label}
                 </label>
               ))}

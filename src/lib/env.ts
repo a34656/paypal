@@ -33,10 +33,12 @@ const rawSchema = z.object({
   PAYPAL_WEBHOOK_ID: optionalNonEmpty,
   PAYPAL_MERCHANT_ID: optionalNonEmpty,
 
-  ANTHROPIC_API_KEY: optionalNonEmpty,
+  GEMINI_API_KEY: optionalNonEmpty,
   AI_MODEL: optionalNonEmpty,
 
   CHANNEL3_API_KEY: optionalNonEmpty,
+  /** Product source for the Scout agent. "channel3" = real cross-retailer catalogue; "demo" = fictional seeded catalogue. */
+  PRODUCT_PROVIDER: z.enum(["channel3", "demo"]).default("channel3"),
 });
 
 export interface AppEnv {
@@ -57,6 +59,7 @@ export interface AppEnv {
   };
   ai: { configured: boolean; apiKey: string | null; model: string | null };
   channel3: { configured: boolean; apiKey: string | null };
+  productProvider: "channel3" | "demo";
   warnings: string[];
 }
 
@@ -135,8 +138,9 @@ export function parseEnv(source: Record<string, string | undefined>): AppEnv {
       webhookId: e.PAYPAL_WEBHOOK_ID ?? null,
       merchantId: e.PAYPAL_MERCHANT_ID ?? null,
     },
-    ai: { configured: !!e.ANTHROPIC_API_KEY && !!e.AI_MODEL, apiKey: e.ANTHROPIC_API_KEY ?? null, model: e.AI_MODEL ?? null },
+    ai: { configured: !!e.GEMINI_API_KEY && !!e.AI_MODEL, apiKey: e.GEMINI_API_KEY ?? null, model: e.AI_MODEL ?? null },
     channel3: { configured: !!e.CHANNEL3_API_KEY, apiKey: e.CHANNEL3_API_KEY ?? null },
+    productProvider: e.PRODUCT_PROVIDER,
     warnings,
   };
 }

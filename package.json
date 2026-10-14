@@ -26,7 +26,7 @@
     "glob": "^11.0.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.133.0",
+    "@google/genai": "^2.29.1",
     "@paypal/react-paypal-js": "^10.6.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",

@@ -1,7 +1,8 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/client/cn";
 
-const base = "w-full rounded-md border border-line-strong bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted/60 focus:border-cyan/60 focus:outline-none disabled:opacity-50";
+const base =
+  "w-full rounded-[4px] border border-line-strong bg-bg/70 px-3 py-2 text-sm text-fg placeholder:text-faint transition-colors focus:border-cyan/60 focus:bg-bg focus:outline-none aria-[invalid=true]:border-critical/60 disabled:opacity-50";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...p }, ref) {
   return <input ref={ref} className={cn(base, "h-9", className)} {...p} />;
@@ -18,7 +19,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
 export function Field({ label, htmlFor, hint, warning, children }: { label: string; htmlFor: string; hint?: ReactNode; warning?: ReactNode; children: ReactNode }) {
   return (
     <div className="space-y-1">
-      <label htmlFor={htmlFor} className="block text-xs font-medium text-muted">
+      <label htmlFor={htmlFor} className="block font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted">
         {label}
       </label>
       {children}

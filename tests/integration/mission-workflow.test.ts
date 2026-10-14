@@ -37,7 +37,13 @@ describe("mission create → confirm → execute", () => {
     expect(mission.recommendedProductId).toBe(by("demo-rpi-002").productId);
     expect(mission.decision).toBe("REQUIRE_APPROVAL");
     expect(by("demo-rpi-002").totalMinor).toBe(176_700);
-    expect(by("demo-rpi-001").policyDecision).toBe("BLOCK"); // unknown shipping → unknown total
+    // Unknown shipping → never an exact total: bought only under a spending cap with approver sign-off,
+    // and ranked below every offer that discloses its full cost.
+    expect(by("demo-rpi-001").amountBasis).toBe("CAP");
+    expect(by("demo-rpi-001").totalMinor).toBe(6_800 * 20 + Math.ceil((6_800 * 20 * 15) / 100));
+    expect(by("demo-rpi-001").policyDecision).toBe("REQUIRE_APPROVAL");
+    expect((by("demo-rpi-001").policyResult as { checks: { id: string; result: string }[] }).checks.find((c) => c.id === "floor.spend_cap")?.result).toBe("REQUIRE_APPROVAL");
+    expect(by("demo-rpi-001").recommendationRank!).toBeGreaterThan(by("demo-rpi-002").recommendationRank!);
     expect(by("demo-rpi-003").policyDecision).toBe("BLOCK"); // over budget
     expect(by("demo-rpi-004").recommendationRank).toBeNull(); // wrong model
     expect(by("demo-rpi-005").policyDecision).toBe("BLOCK"); // prompt-injection listing

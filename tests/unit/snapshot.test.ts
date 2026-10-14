@@ -12,6 +12,8 @@ const snap: ApprovalSnapshot = {
   shippingMinor: 3_500,
   taxMinor: 13_200,
   totalMinor: 176_700,
+  amountBasis: "EXACT",
+  allowanceMinor: 0,
   currency: "USD",
   policyVersion: 1,
   expiresAt: "2026-10-13T12:30:00.000Z",

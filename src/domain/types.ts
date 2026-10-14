@@ -28,7 +28,19 @@ export const missionConstraintsSchema = z.object({
   requiredAttributes: z
     .record(shortText(40).min(1), shortText(80).min(1))
     .refine((r) => Object.keys(r).length <= 10, "At most 10 required attributes"),
+  /**
+   * Mission risk tolerance: a per-mission risk ceiling chosen by the user. It can only TIGHTEN
+   * the owner's policy (the policy maximum still applies); null/absent = policy default.
+   */
+  maxRiskScore: z.number().int().min(0).max(100).nullable().optional(),
 });
+
+/** UI presets for maxRiskScore. */
+export const RISK_TOLERANCE = [
+  { id: "policy", label: "Policy default", maxRiskScore: null, hint: "Only the owner policy applies." },
+  { id: "balanced", label: "Balanced", maxRiskScore: 45, hint: "Block offers with risk above 45." },
+  { id: "conservative", label: "Conservative", maxRiskScore: 30, hint: "Block offers with risk above 30." },
+] as const;
 export type MissionConstraints = z.infer<typeof missionConstraintsSchema>;
 
 export const createMissionInputSchema = z.object({
@@ -58,6 +70,12 @@ export interface ProductCandidate {
   stockQuantity: number | null;
   attributes: Record<string, string>;
   isDemoData: boolean;
-  /** Seeded reference price for this product class. Documented as seeded, not market data. */
+  /** Reference unit price: seeded for demo data; retailer list price or cross-retailer median for real data. */
   baselineUnitPriceMinor: number | null;
+  /** Where the reference price came from (e.g. "retailer-list-price", "cross-retailer-median"). */
+  baselineSource?: string | null;
+  /** Availability flag when the provider discloses it but not a stock quantity. */
+  inStock?: boolean | null;
+  /** Retailer offer link (https only), shown to the human; never fetched server-side. */
+  offerUrl?: string | null;
 }

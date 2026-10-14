@@ -5,7 +5,7 @@ import { executeMission } from "@/server/orchestrator";
 import { approvePurchase } from "@/server/approvals";
 import { DEMO_SCENARIOS } from "@/domain/providers/demo-catalog";
 import { DeterministicAi } from "@/domain/ai/provider";
-import { setAiOverrideForTests } from "@/server/ai/anthropic";
+import { setAiOverrideForTests } from "@/server/ai/gemini";
 import { newSession, type Session } from "./api";
 
 setAiOverrideForTests(new DeterministicAi());

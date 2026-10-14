@@ -11,20 +11,19 @@ import "server-only";
 import type { Mission, MissionProduct, Product, User } from "@/generated/prisma/client";
 import { snapshotHash, type ApprovalSnapshot } from "@/domain/approval/snapshot";
 import { evaluate, type PolicyEvaluation } from "@/domain/policy/engine";
-import { allInTotal } from "@/lib/money";
 import { appendAudit } from "./audit";
 import { casApproval, casMission, casPayment } from "./cas";
 import type { Db, Tx } from "./db";
 import { AppError, conflict, forbidden, precondition } from "./errors";
 import { confirmedConstraints, loadOwnedMission } from "./missions";
-import { duplicateDetected, snapshotFor } from "./orchestrator";
+import { duplicateDetected, purchaseAmounts, snapshotFor, type PurchaseAmounts } from "./orchestrator";
 import { latestPolicy } from "./policies";
 import { actorOf, hasRole } from "./users";
 
 export interface PurchaseContext {
   mission: Mission;
   mp: MissionProduct & { product: Product };
-  amounts: { itemTotalMinor: number; shippingMinor: number; taxMinor: number; totalMinor: number };
+  amounts: PurchaseAmounts;
 }
 
 /** Recomputes the purchase from stored data. Never trusts client-provided amounts. */
@@ -34,10 +33,13 @@ export async function loadPurchase(db: Db | Tx, mission: Mission, productId?: st
   const mp = await db.missionProduct.findUnique({ where: { missionId_productId: { missionId: mission.id, productId: pid } }, include: { product: true } });
   if (!mp) throw precondition("Purchase not found on this mission");
   const c = confirmedConstraints(mission);
-  const breakdown = allInTotal({ unitPriceMinor: mp.product.unitPriceMinor, quantity: c.quantity, shippingMinor: mp.product.shippingMinor, taxMinor: mp.product.taxMinor });
-  if (!breakdown) throw precondition("All-in total is unknown; this purchase cannot be authorised.");
-  if (mp.totalMinor !== breakdown.totalMinor) throw conflict("Stored total no longer matches product data; re-run the mission.");
-  return { mission, mp, amounts: breakdown };
+  const { config } = await latestPolicy(db, mission.ownerId);
+  const amounts = purchaseAmounts(mp.product, c.quantity, config.costAllowancePct);
+  if (!amounts) throw precondition("All-in total is unknown and the policy allows no spending cap; this purchase cannot be authorised.");
+  if (mp.totalMinor !== amounts.totalMinor || (mp.amountBasis ?? "EXACT") !== amounts.basis) {
+    throw conflict("Stored total no longer matches product data or policy allowance; re-run the mission.");
+  }
+  return { mission, mp, amounts };
 }
 
 export function buildSnapshot(p: PurchaseContext, policyVersion: number, expiresAt: Date): ApprovalSnapshot {
@@ -52,6 +54,8 @@ export function buildSnapshot(p: PurchaseContext, policyVersion: number, expires
     shippingMinor: p.amounts.shippingMinor,
     taxMinor: p.amounts.taxMinor,
     totalMinor: p.amounts.totalMinor,
+    amountBasis: p.amounts.basis,
+    allowanceMinor: p.amounts.allowanceMinor,
     currency: p.mp.product.currency,
     policyVersion,
     expiresAt: expiresAt.toISOString(),

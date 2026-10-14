@@ -39,6 +39,8 @@ const hostile: MissionProductDTO = {
   productId: "p1",
   quantity: 20,
   totalMinor: null,
+  amountBasis: null,
+  allowanceMinor: null,
   riskScore: 23,
   trustScore: 77,
   riskLevel: "LOW",
@@ -68,6 +70,9 @@ const hostile: MissionProductDTO = {
     stockQuantity: 1000,
     attributes: {},
     isDemoData: true,
+    provider: "demo",
+    sellerId: "demo-seller-totallylegit",
+    metadata: null,
   },
 };
 
@@ -80,5 +85,30 @@ describe("untrusted listing text renders as plain text", () => {
     expect(container.querySelector("script")).toBeNull();
     expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument();
     expect(screen.getAllByText("unknown").length).toBeGreaterThan(0);
+  });
+});
+
+describe("mission composer", () => {
+  it("validates fields before calling the API, and offers risk tolerance", async () => {
+    const { MissionComposer } = await import("@/components/mission/mission-composer");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    render(<MissionComposer />);
+    await userEvent.click(screen.getByRole("button", { name: /Create mission/ }));
+    expect(screen.getByText("Describe the item (at least 3 characters).")).toBeInTheDocument();
+    expect(screen.getByText(/Enter a USD amount/)).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Risk tolerance")).toHaveValue("policy");
+    expect(screen.getByLabelText("What to purchase")).toHaveAttribute("aria-invalid", "true");
+    fetchSpy.mockRestore();
+  });
+});
+
+describe("itemized total", () => {
+  it("labels undisclosed shipping/tax as unknown and a cap as a maximum", async () => {
+    const { ItemizedTotal } = await import("@/components/mission/purchase-summary");
+    render(<ItemizedTotal mp={{ ...hostile, quantity: 2, totalMinor: 11_270, amountBasis: "CAP", allowanceMinor: 1_470, product: { ...hostile.product, unitPriceMinor: 4_900, shippingMinor: null, taxMinor: null } }} currency="USD" />);
+    expect(screen.getAllByText(/unknown · in allowance/)).toHaveLength(2);
+    expect(screen.getByText("Maximum · spending cap")).toBeInTheDocument();
+    expect(screen.getByText(/≤ \$112\.70/)).toBeInTheDocument();
   });
 });

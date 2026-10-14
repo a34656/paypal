@@ -17,6 +17,9 @@ const ALLOWED_KEYS = new Set([
   "approvedBy", "fingerprint", "duplicate", "unitPriceMinor", "shippingMinor", "taxMinor",
   "itemTotalMinor", "explanation", "explanationSource", "provider", "demo", "rejected", "assessed",
   "providerProductIds", "problems", "displayName", "orderStatus", "captureStatus", "intent", "reconciled", "lagSeconds",
+  "capped", "fallbackReason", "allowanceMinor", "amountBasis", "providerAuthorizationId", "authorizationStatus",
+  "authorizationExpiresAt", "settledMinor", "releasedMinor", "refundId", "providerRefundId", "refundedMinor",
+  "remainingMinor", "capMinor",
 ]);
 
 const MAX_STRING = 500;
@@ -26,12 +29,12 @@ const MAX_ARRAY = 50;
 const SECRET_PATTERNS: RegExp[] = [
   /Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi,
   /Basic\s+[A-Za-z0-9+/]+=*/gi,
-  /sk-ant-[A-Za-z0-9\-_]+/g,
+  /AIza[A-Za-z0-9\-_]+/g,
   /(access_token|client_secret|password|api[_-]?key)["'=:\s]+[^\s"',}]+/gi,
 ];
 
 function secretValues(): string[] {
-  return [process.env.PAYPAL_CLIENT_SECRET, process.env.ANTHROPIC_API_KEY, process.env.SESSION_SECRET, process.env.CHANNEL3_API_KEY]
+  return [process.env.PAYPAL_CLIENT_SECRET, process.env.GEMINI_API_KEY, process.env.SESSION_SECRET, process.env.CHANNEL3_API_KEY]
     .filter((v): v is string => typeof v === "string" && v.length >= 8);
 }
 

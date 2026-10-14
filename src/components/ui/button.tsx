@@ -4,17 +4,17 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/client/cn";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[4px] text-sm font-medium tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] duration-200 ease-[var(--ease-cine)] disabled:cursor-not-allowed disabled:opacity-45 active:translate-y-px",
   {
     variants: {
       variant: {
-        primary: "bg-cyan text-bg hover:bg-cyan/90",
-        secondary: "border border-line-strong bg-elevated text-fg hover:border-cyan/50 hover:bg-elevated/80",
-        ghost: "text-muted hover:bg-elevated hover:text-fg",
-        danger: "border border-critical/40 bg-critical/10 text-critical hover:bg-critical/20",
-        success: "border border-success/40 bg-success/10 text-success hover:bg-success/20",
+        primary: "bg-cyan text-bg shadow-[0_0_24px_-10px_rgb(111_227_238/0.8)] hover:bg-ice",
+        secondary: "border border-line-strong bg-elevated/60 text-fg hover:border-cyan/45 hover:bg-elevated",
+        ghost: "text-muted hover:bg-elevated/70 hover:text-fg",
+        danger: "border border-critical/40 bg-critical/[0.07] text-critical hover:bg-critical/15",
+        success: "border border-success/45 bg-success/[0.08] text-success hover:bg-success/15",
       },
-      size: { sm: "h-8 px-3 text-xs", md: "h-9 px-4", lg: "h-11 px-6 text-base", icon: "h-8 w-8" },
+      size: { sm: "h-8 px-3 text-xs", md: "h-9 px-4", lg: "h-11 px-6 text-[15px]", icon: "h-8 w-8" },
     },
     defaultVariants: { variant: "secondary", size: "md" },
   },
