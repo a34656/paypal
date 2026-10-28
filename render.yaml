@@ -1,0 +1,53 @@
+services:
+  - type: web
+    name: vanta
+    runtime: node
+    region: oregon
+    plan: starter  # upgrade to 'standard' to remove cold starts entirely
+    buildCommand: npm ci && npm run build
+    startCommand: npm run db:migrate && npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000  # Render's default; next start reads this natively
+      - key: DATABASE_URL
+        fromDatabase:
+          name: vanta-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: AEGIS_APP_ORIGIN
+        sync: false            # set in Render dashboard to your *.onrender.com URL
+      - key: PAYPAL_BASE_URL
+        value: https://api-m.sandbox.paypal.com
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: NEXT_PUBLIC_PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: PAYPAL_MERCHANT_ID
+        sync: false
+      - key: AEGIS_ALLOW_LIVE
+        value: "false"
+      - key: AEGIS_ENVIRONMENT
+        value: production
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: gemini-2.5-pro
+      - key: PRODUCT_PROVIDER
+        value: channel3
+      - key: CHANNEL3_API_KEY
+        sync: false
+
+databases:
+  - name: vanta-db
+    databaseName: aegis
+    plan: starter             # free-tier postgres (90-day retention; upgrade for prod)
+    region: oregon
