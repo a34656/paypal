@@ -3,7 +3,7 @@ services:
     name: vanta
     runtime: node
     region: oregon
-    plan: starter  # upgrade to 'standard' to remove cold starts entirely
+    plan: free # upgrade to 'standard' to remove cold starts entirely
     buildCommand: npm ci && npm run build
     startCommand: npm run db:migrate && npm start
     healthCheckPath: /api/health
@@ -12,7 +12,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 10000  # Render's default; next start reads this natively
+        value: 10000 # Render's default; next start reads this natively
       - key: DATABASE_URL
         fromDatabase:
           name: vanta-db
@@ -20,7 +20,7 @@ services:
       - key: SESSION_SECRET
         generateValue: true
       - key: AEGIS_APP_ORIGIN
-        sync: false            # set in Render dashboard to your *.onrender.com URL
+        sync: false # set in Render dashboard to your *.onrender.com URL
       - key: PAYPAL_BASE_URL
         value: https://api-m.sandbox.paypal.com
       - key: PAYPAL_CLIENT_ID
@@ -49,5 +49,5 @@ services:
 databases:
   - name: vanta-db
     databaseName: aegis
-    plan: starter             # free-tier postgres (90-day retention; upgrade for prod)
+    plan: free # free-tier postgres (90-day retention; upgrade for prod)
     region: oregon
