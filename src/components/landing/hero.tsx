@@ -7,36 +7,44 @@ import { ArrowRight, ArrowDown } from "lucide-react";
 import { useApi } from "@/lib/client/api";
 import { useOnScreen, useRenderCapability } from "@/lib/client/render-capability";
 import type { SessionInfo } from "@/components/shell/identity-menu";
-import { AegisWordmark } from "@/components/shell/logo";
+import { VantaWordmark } from "@/components/shell/logo";
 import { ModeIndicator } from "@/components/shell/mode-indicator";
+import { LiquidChrome } from "@/components/vanta/liquid-chrome";
+import { DemoCta } from "@/components/demo";
 import { CoreFallback } from "./core-fallback";
 
 const CoreScene = dynamic(() => import("@/components/three/core-scene"), { ssr: false });
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
+const NAV = [
+  ["#story", "HOW IT WORKS"],
+  ["#agents", "AGENTS"],
+  ["#policy", "POLICY"],
+  ["#payments", "PAYPAL"],
+] as const;
+
 export function LandingNav() {
   const { data: session } = useApi<SessionInfo>("/api/session");
   return (
     <header className="fixed inset-x-0 top-0 z-40">
       <div className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-5 md:px-10">
-        <Link href="/" aria-label="AEGIS home">
-          <AegisWordmark subtitle />
+        <Link href="/" aria-label="VANTA home">
+          <VantaWordmark subtitle />
         </Link>
         <nav aria-label="Landing" className="flex items-center gap-1 md:gap-6">
-          <a href="#protocol" className="hidden font-mono text-[11px] tracking-[0.2em] text-muted transition-colors hover:text-fg md:inline">
-            WORKFLOW
-          </a>
-          <Link href="/command-center" className="hidden font-mono text-[11px] tracking-[0.2em] text-muted transition-colors hover:text-fg md:inline">
-            COMMAND CENTER
-          </Link>
-          <Link href="/audit" className="hidden font-mono text-[11px] tracking-[0.2em] text-muted transition-colors hover:text-fg md:inline">
-            AUDIT
+          {NAV.map(([href, label]) => (
+            <a key={href} href={href} className="hidden font-mono text-[11px] tracking-[0.2em] text-muted transition-colors hover:text-fg lg:inline">
+              {label}
+            </a>
+          ))}
+          <Link href="/audit" className="hidden font-mono text-[11px] tracking-[0.2em] text-muted transition-colors hover:text-fg lg:inline">
+            AUDIT LOG
           </Link>
           <ModeIndicator mode={session?.mode} className="hidden sm:inline-flex" />
           <Link
             href="/command-center"
-            className="ml-2 inline-flex h-8 items-center gap-1.5 rounded-[4px] border border-line-strong bg-bg/50 px-3 font-mono text-[11px] tracking-[0.16em] text-fg backdrop-blur transition-colors hover:border-cyan/50"
+            className="ml-2 inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-[4px] border border-line-strong bg-bg/50 px-3 font-mono text-[11px] tracking-[0.16em] text-fg backdrop-blur transition-colors hover:border-cyan/50"
           >
             ENTER CONSOLE <ArrowRight className="h-3 w-3" aria-hidden />
           </Link>
@@ -92,6 +100,7 @@ export function Hero() {
   const onScreen = useOnScreen(section);
   const [lost, setLost] = useState(false);
   const [ready, setReady] = useState(false);
+  const [chromeFailed, setChromeFailed] = useState(false);
 
   useEffect(() => {
     const onScroll = () => {
@@ -114,8 +123,15 @@ export function Hero() {
 
   return (
     <section ref={section} className="relative flex min-h-[100svh] items-end overflow-hidden" aria-labelledby="hero-title">
+      {/* Atmosphere layer: liquid chrome, kept dim and masked so it reads as light on metal, not a second subject.
+          Skipped on low-power devices and whenever the 3D path is off (reduced motion / no WebGL). */}
+      {use3d && !cap.lowPower && !chromeFailed && (
+        <div className="pointer-events-none absolute inset-0 opacity-[0.32] mix-blend-screen [mask-image:radial-gradient(85%_75%_at_62%_42%,black_20%,transparent_78%)]" aria-hidden>
+          <LiquidChrome baseColor={[0.04, 0.09, 0.13]} speed={0.35} amplitude={0.45} paused={!onScreen} onError={() => setChromeFailed(true)} />
+        </div>
+      )}
       {/* Scene layer */}
-      <div className="absolute inset-x-0 top-0 h-[58%] opacity-70 md:inset-0 md:left-[38%] md:h-auto md:opacity-100">
+      <div data-demo-target="trust-core" className="absolute inset-x-0 top-0 h-[58%] opacity-70 md:inset-0 md:left-[38%] md:h-auto md:opacity-100">
         {use3d ? (
           <CoreScene scroll={scroll} lowPower={cap.lowPower} paused={!onScreen} onContextLost={() => setLost(true)} onReady={() => setReady(true)} />
         ) : (
@@ -131,7 +147,7 @@ export function Hero() {
 
       <div className="relative z-10 mx-auto w-full max-w-[1440px] px-5 pb-16 pt-32 md:px-10 md:pb-24">
         <motion.p {...line(0.1)} className="tech-label mb-6 flex items-center gap-3 !text-cyan">
-          <span className="h-px w-10 bg-cyan/60" aria-hidden /> AEGIS · AI Commerce Guardian
+          <span className="h-px w-10 bg-cyan/60" aria-hidden /> VANTA · Trust layer for agentic commerce
         </motion.p>
         <h1 id="hero-title" className="editorial max-w-[14ch] text-[12vw] text-fg [text-shadow:0_2px_40px_rgb(5_6_8/0.9)] sm:text-[8.5vw] lg:text-[104px]">
           <motion.span {...line(0.25)} className="block">
@@ -142,17 +158,20 @@ export function Hero() {
           </motion.span>
         </h1>
         <motion.div {...line(0.7)} className="mt-8 grid max-w-3xl gap-8 md:grid-cols-[1fr_auto] md:items-end">
-          <p className="max-w-md text-[17px] leading-relaxed text-muted">An intelligent trust layer between autonomous commerce and payment execution.</p>
+          <p className="max-w-md text-[17px] leading-relaxed text-muted">
+            VANTA governs AI-driven purchasing before money moves. Agents can discover, assess and recommend; deterministic policy and a human decide whether anything is paid.
+          </p>
         </motion.div>
         <motion.div {...line(0.85)} className="mt-9 flex flex-wrap items-center gap-3">
+          <DemoCta />
           <Link
             href="/command-center"
-            className="group inline-flex h-12 items-center gap-3 rounded-[4px] bg-cyan px-6 text-[15px] font-medium text-bg shadow-[0_0_40px_-12px_rgb(111_227_238/0.9)] transition-colors hover:bg-ice"
+            className="group inline-flex h-12 items-center gap-3 rounded-[4px] border border-line-strong bg-bg/40 px-6 text-[15px] text-fg backdrop-blur transition-colors hover:border-cyan/50"
           >
             Launch Command Center <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
           </Link>
-          <a href="#protocol" className="inline-flex h-12 items-center gap-2 rounded-[4px] border border-line-strong bg-bg/40 px-6 text-[15px] text-fg backdrop-blur transition-colors hover:border-cyan/50">
-            Explore the Protocol <ArrowDown className="h-4 w-4" aria-hidden />
+          <a href="#story" className="inline-flex h-12 items-center gap-2 px-2 text-sm text-muted transition-colors hover:text-fg">
+            Explore the Trust Layer <ArrowDown className="h-4 w-4" aria-hidden />
           </a>
           <Link href="/missions/new?scenario=robotics-lab" className="px-2 text-sm text-muted underline-offset-4 transition-colors hover:text-fg hover:underline">
             Run a demo mission

@@ -20,6 +20,11 @@ const ALLOWED_KEYS = new Set([
   "capped", "fallbackReason", "allowanceMinor", "amountBasis", "providerAuthorizationId", "authorizationStatus",
   "authorizationExpiresAt", "settledMinor", "releasedMinor", "refundId", "providerRefundId", "refundedMinor",
   "remainingMinor", "capMinor",
+  // Recovery guidance: mission revisions, override requests, advisor and alternative search.
+  "revisionId", "revisionNumber", "revisedFrom", "missionVersion", "evaluatedPolicyVersion", "currentPolicyVersion",
+  "relaxesMandatory", "acknowledgedRelaxations", "refreshQuotes", "note", "checkId", "checkIds", "policyField",
+  "policyFields", "affectedOffers", "currentBudgetMinor", "proposedBudgetMinor", "justification", "effect", "refused",
+  "attemptedDecision", "reviewer", "nextAction", "validationProblems", "queries", "results", "viable",
 ]);
 
 const MAX_STRING = 500;

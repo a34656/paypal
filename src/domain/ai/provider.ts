@@ -9,6 +9,8 @@ import { z } from "zod";
 import { missionConstraintsSchema } from "@/domain/types";
 import { parseMajorInput } from "@/lib/money";
 import { demoParseMission, type ParseProposal } from "./demo-parser";
+import { deterministicAdvice, type RecoveryAdvice } from "@/domain/recovery/advice";
+import type { RecoveryAnalysis } from "@/domain/recovery/analysis";
 
 export interface ExplainInput {
   missionTitle: string;
@@ -23,6 +25,12 @@ export interface AiProvider {
   readonly isLlm: boolean;
   interpretMission(text: string): Promise<ParseProposal>;
   explainRecommendation(input: ExplainInput): Promise<{ text: string; source: "llm" | "deterministic" }>;
+  /**
+   * Procurement recovery guidance for a blocked mission. Returns UNVALIDATED structured output;
+   * the server validates it against the deterministic analysis before showing it.
+   * Advisory only: it cannot change constraints, decisions, policy, approvals or payments.
+   */
+  adviseRecovery(analysis: RecoveryAnalysis): Promise<{ raw: unknown; source: "llm" | "deterministic" }>;
 }
 
 export const MAX_MISSION_TEXT = 2000;
@@ -41,6 +49,9 @@ export class DeterministicAi implements AiProvider {
   }
   async explainRecommendation(input: ExplainInput) {
     return { text: deterministicExplanation(input), source: "deterministic" as const };
+  }
+  async adviseRecovery(analysis: RecoveryAnalysis): Promise<{ raw: RecoveryAdvice; source: "deterministic" }> {
+    return { raw: deterministicAdvice(analysis), source: "deterministic" };
   }
 }
 

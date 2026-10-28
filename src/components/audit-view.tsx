@@ -68,7 +68,7 @@ export function AuditView({ initialMissionId }: { initialMissionId: string }) {
   const { data, error, isLoading, mutate } = useApi<{ events: AuditEventDTO[] }>(`/api/audit?${params}`, { keepPreviousData: true, refreshInterval: 10_000 });
 
   return (
-    <div className="space-y-4">
+    <div data-demo-target="audit-log" className="space-y-4">
       <PageHeader eyebrow="Accountability" title="Audit log" subtitle="Append-only and hash-chained: hash = SHA-256(prevHash ‖ canonical(event)). Every financial state change commits with its event in one transaction." actions={<ChainIndicator />} />
       <Input aria-label="Search loaded events" placeholder="Search event, actor, reason, decision…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-md" />
       <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">

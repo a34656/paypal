@@ -39,6 +39,11 @@ const rawSchema = z.object({
   CHANNEL3_API_KEY: optionalNonEmpty,
   /** Product source for the Scout agent. "channel3" = real cross-retailer catalogue; "demo" = fictional seeded catalogue. */
   PRODUCT_PROVIDER: z.enum(["channel3", "demo"]).default("channel3"),
+  /**
+   * Comma-separated AEGIS user ids allowed to REVIEW policy override requests (separation of
+   * duties: a reviewer can never review their own request). Empty = no in-app reviewer.
+   */
+  AEGIS_POLICY_ADMIN_IDS: optionalNonEmpty,
 });
 
 export interface AppEnv {
@@ -60,6 +65,8 @@ export interface AppEnv {
   ai: { configured: boolean; apiKey: string | null; model: string | null };
   channel3: { configured: boolean; apiKey: string | null };
   productProvider: "channel3" | "demo";
+  /** User ids authorised to review policy override requests. */
+  policyAdminIds: string[];
   warnings: string[];
 }
 
@@ -141,6 +148,10 @@ export function parseEnv(source: Record<string, string | undefined>): AppEnv {
     ai: { configured: !!e.GEMINI_API_KEY && !!e.AI_MODEL, apiKey: e.GEMINI_API_KEY ?? null, model: e.AI_MODEL ?? null },
     channel3: { configured: !!e.CHANNEL3_API_KEY, apiKey: e.CHANNEL3_API_KEY ?? null },
     productProvider: e.PRODUCT_PROVIDER,
+    policyAdminIds: (e.AEGIS_POLICY_ADMIN_IDS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => /^[a-z0-9]{8,40}$/i.test(s)),
     warnings,
   };
 }

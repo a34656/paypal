@@ -118,7 +118,7 @@ export function CheckoutPanel({
   const simulated = live ? live.provider === "simulated" : !cfg?.paypalConnected;
 
   return (
-    <div className="space-y-4">
+    <div data-demo-target="checkout-panel" className="space-y-4">
       {live && (
         <div className="rounded-md border border-line p-3 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -173,7 +173,7 @@ export function CheckoutPanel({
             <p className="mt-2 rounded border border-purple/30 bg-purple/10 px-2 py-1 text-purple">SIMULATED — no money moved. This is not a PayPal payment.</p>
           )}
           {live.status === "CAPTURED" && live.provider === "paypal" && <p className="mt-2 text-success">Capture confirmed by PayPal ({live.mode === "SANDBOX" ? "Sandbox test money" : live.mode}).</p>}
-          {live.status === "CAPTURE_PROVIDER_PENDING" && <p className="mt-2 text-warning">PayPal reports the capture as PENDING. It is not complete; AEGIS reconciles automatically.</p>}
+          {live.status === "CAPTURE_PROVIDER_PENDING" && <p className="mt-2 text-warning">PayPal reports the capture as PENDING. It is not complete; VANTA reconciles automatically.</p>}
           {live.status === "CAPTURE_PENDING" && <p className="mt-2 text-warning">Capture in progress or interrupted. Outcome not yet confirmed.</p>}
           {live.status === "AUTHORIZE_PENDING" && <p className="mt-2 text-warning">Placing the authorization hold. Outcome not yet confirmed.</p>}
           {live.status === "SETTLE_PENDING" && <p className="mt-2 text-warning">Settlement of {formatMoney(live.settledMinor, live.currency)} in progress. Retrying settles idempotently.</p>}
@@ -186,7 +186,7 @@ export function CheckoutPanel({
             <Lock className="h-4 w-4" aria-hidden /> {live.provider === "simulated" ? "Simulated hold" : "PayPal authorization hold"}: at most {formatMoney(live.amountMinor, live.currency)}
           </p>
           <p className="text-muted">
-            The seller did not disclose shipping/tax, so the approver signed off on a cap. Enter the seller&apos;s final invoice total; AEGIS captures exactly that (never above the cap) and PayPal releases the rest.
+            The seller did not disclose shipping/tax, so the approver signed off on a cap. Enter the seller&apos;s final invoice total; VANTA captures exactly that (never above the cap) and PayPal releases the rest.
             {live.authorizationExpiresAt && ` Hold valid until ${new Date(live.authorizationExpiresAt).toLocaleDateString()}.`}
           </p>
           <div className="flex flex-wrap items-end gap-2">

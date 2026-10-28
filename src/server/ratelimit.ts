@@ -18,6 +18,10 @@ export const RATE_LIMITS = {
   policy: { name: "policy-write", limit: 30, windowSeconds: 600 },
   llm: { name: "llm", limit: 15, windowSeconds: 600 },
   webhook: { name: "paypal-webhook", limit: 300, windowSeconds: 60 },
+  recovery: { name: "recovery", limit: 120, windowSeconds: 600 },
+  revise: { name: "mission-revise", limit: 20, windowSeconds: 600 },
+  alternatives: { name: "recovery-alternatives", limit: 20, windowSeconds: 600 },
+  override: { name: "policy-override", limit: 20, windowSeconds: 600 },
 } satisfies Record<string, RateLimitRule>;
 
 export async function consumeRateLimit(db: Db, rule: RateLimitRule, subject: string, now = new Date()): Promise<void> {

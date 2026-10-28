@@ -114,6 +114,16 @@ export interface MissionDTO {
   parsedProposal: (Record<string, unknown> & { uncertain?: string[] }) | null;
   confirmedConstraints: Record<string, unknown> | null;
   failureReason: string | null;
+  revisedFromId: string | null;
+  revisionNumber: number;
+  version: number;
+  createdAt: string;
+}
+export interface RevisionRefDTO {
+  id: string;
+  status: string;
+  decision: string | null;
+  revisionNumber: number;
   createdAt: string;
 }
 export interface MissionDetailDTO {
@@ -122,6 +132,7 @@ export interface MissionDetailDTO {
   approvals: ApprovalDTO[];
   payments: PaymentDTO[];
   agentRuns: { id: string; step: string; status: string; attempt: number; durationMs: number | null; error: string | null }[];
+  revisions: RevisionRefDTO[];
 }
 export interface EventsDTO {
   missionId: string;

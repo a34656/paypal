@@ -1,0 +1,259 @@
+/*
+ * Styles for swipe-actions.tsx. Layers are positioned entirely outside the row (left: -100% / left: 100%)
+ * and slid in by the component's transform, so their inner edge sits exactly at the revealed distance.
+ * Theme tokens carry fallbacks because Tailwind only emits the variables a stylesheet actually uses.
+ */
+
+.surface {
+  --sa-bg: var(--color-bg-2, #0b0d12);
+  --sa-row: var(--color-elevated, #10131a);
+  --sa-line: var(--color-line, #1a1e27);
+  --sa-line-strong: var(--color-line-strong, #272c37);
+  --sa-fg: var(--color-fg, #f2eee6);
+  --sa-muted: var(--color-muted, #8b93a2);
+  --sa-cyan: var(--color-cyan, #6fe3ee);
+  --sa-critical: var(--color-critical, #ff5d6c);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--sa-line);
+  border-radius: 6px;
+  background: var(--sa-bg);
+  color: var(--sa-fg);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  outline: none;
+}
+
+.row {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.row + .row {
+  border-top: 1px solid var(--sa-line);
+}
+.row[data-dragging] {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.row[data-removing] {
+  pointer-events: none;
+}
+
+.content {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 60px;
+  padding: 10px 8px 10px 16px;
+  background: var(--sa-row);
+  /* The page keeps vertical scrolling; horizontal movement is read by the row's pointer handlers. */
+  touch-action: pan-y;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.more {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sa-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+.more:hover,
+.more[data-state="open"] {
+  color: var(--sa-fg);
+  background: rgb(255 255 255 / 0.04);
+  border-color: var(--sa-line-strong);
+}
+.more:focus-visible {
+  outline: 1.5px solid var(--sa-cyan);
+  outline-offset: 1px;
+}
+
+.menu {
+  z-index: 60;
+  min-width: 200px;
+  padding: 4px;
+  border: 1px solid var(--color-line-strong, #272c37);
+  border-radius: 8px;
+  background: rgb(16 19 26 / 0.96);
+  color: var(--color-fg, #f2eee6);
+  box-shadow: 0 18px 50px -18px rgb(0 0 0 / 0.8), 0 0 0 1px rgb(111 227 238 / 0.04);
+  backdrop-filter: blur(10px);
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+  animation: sa-menu-in 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  animation: sa-item-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 18ms);
+}
+.item[data-highlighted] {
+  background: rgb(111 227 238 / 0.1);
+  color: var(--color-fg, #f2eee6);
+}
+.item[data-tone="danger"] {
+  color: var(--color-critical, #ff5d6c);
+}
+.item[data-tone="danger"][data-highlighted] {
+  background: rgb(255 93 108 / 0.12);
+}
+.item[data-tone="accent"] {
+  color: var(--color-cyan, #6fe3ee);
+}
+
+.itemIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  opacity: 0.85;
+}
+.itemIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.layer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  color: var(--sa-fg);
+  background: var(--sa-line-strong);
+  cursor: pointer;
+}
+.layer[data-side="leading"] {
+  left: -100%;
+}
+.layer[data-side="trailing"] {
+  left: 100%;
+}
+.layer[data-tone="neutral"] {
+  background: #2a303c;
+}
+.layer[data-tone="accent"] {
+  background: #164e57;
+  color: #e9fdff;
+}
+.layer[data-tone="danger"] {
+  background: #7a2230;
+  color: #fff1f2;
+}
+
+.anchor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.layer[data-side="leading"] .anchor {
+  right: 0;
+}
+.layer[data-side="trailing"] .anchor {
+  left: 0;
+}
+
+.glyph {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: var(--swipe-action-width, 76px);
+}
+
+.icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+}
+.icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes sa-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+}
+@keyframes sa-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu,
+  .item {
+    animation: none;
+  }
+  .more {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .surface,
+  .menu {
+    border-color: CanvasText;
+  }
+  .layer {
+    border: 1px solid CanvasText;
+  }
+  .item[data-highlighted] {
+    outline: 1px solid Highlight;
+  }
+  .more:focus-visible {
+    outline-color: Highlight;
+  }
+}

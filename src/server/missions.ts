@@ -165,11 +165,12 @@ export async function listMissions(db: Db, user: User, opts: { status?: string; 
 
 export async function missionDetail(db: Db, user: User, missionId: string) {
   const m = await loadOwnedMission(db, user, missionId);
-  const [products, approvals, payments, runs] = await Promise.all([
+  const [products, approvals, payments, runs, revisions] = await Promise.all([
     db.missionProduct.findMany({ where: { missionId }, include: { product: true }, orderBy: [{ recommendationRank: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }] }),
     db.approval.findMany({ where: { missionId }, orderBy: { createdAt: "desc" }, include: { approvedBy: { select: { displayName: true, roles: true } } } }),
     db.payment.findMany({ where: { missionId }, orderBy: { createdAt: "desc" }, include: { refunds: { orderBy: { createdAt: "asc" } } } }),
     db.agentRun.findMany({ where: { missionId }, orderBy: { startedAt: "asc" } }),
+    db.mission.findMany({ where: { revisedFromId: missionId, ownerId: user.id }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, decision: true, revisionNumber: true, createdAt: true } }),
   ]);
   const livePayment = payments.find((p) => PAYMENT_LIVE.includes(p.status)) ?? payments[0] ?? null;
   return {
@@ -185,6 +186,7 @@ export async function missionDetail(db: Db, user: User, missionId: string) {
     approvals,
     payments,
     agentRuns: runs,
+    revisions,
     llmCallsRemaining: Math.max(0, MAX_LLM_CALLS_PER_MISSION - m.llmCalls),
   };
 }

@@ -389,7 +389,7 @@ export default function AegisScene({ vm, products = [], paused, selected, onSele
               {id === "gate" ? (
                 <span className={`font-mono text-[9px] tracking-[0.18em] ${gateLit ? "text-success" : "text-faint"}`}>HUMAN GATE</span>
               ) : id === "core" ? (
-                <span className="font-mono text-[9.5px] tracking-[0.24em] text-muted">AEGIS CORE</span>
+                <span className="font-mono text-[9.5px] tracking-[0.24em] text-muted">VANTA CORE</span>
               ) : (
                 <>
                   <span className={`block font-mono text-[10px] tracking-[0.2em] ${st === "idle" ? "text-faint" : "text-fg"}`}>{NODE_META[id].label.toUpperCase()}</span>

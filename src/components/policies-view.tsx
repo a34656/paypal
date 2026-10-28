@@ -90,7 +90,7 @@ export function PoliciesView() {
   };
 
   return (
-    <div className="space-y-4">
+    <div data-demo-target="policy-config" className="space-y-4">
       <PageHeader
         eyebrow="Governance"
         title="Policies"
@@ -144,7 +144,7 @@ export function PoliciesView() {
               <Field
                 label="Spending-cap allowance (%)"
                 htmlFor="p-cap"
-                hint="When a seller hides shipping/tax, AEGIS may request a PayPal authorization hold of item total + this %. Always needs an approver; 0 = block instead."
+                hint="When a seller hides shipping/tax, VANTA may request a PayPal authorization hold of item total + this %. Always needs an approver; 0 = block instead."
               >
                 <Input id="p-cap" type="number" min={0} max={50} value={draft.costAllowancePct} onChange={(e) => set("costAllowancePct", Number(e.target.value))} />
               </Field>

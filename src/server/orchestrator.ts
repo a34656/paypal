@@ -11,16 +11,18 @@ import "server-only";
  * it never duplicates work. No step can create orders or move money: the final step can only
  * mark the mission AWAITING_APPROVAL, BLOCKED or READY_FOR_CHECKOUT and stop.
  */
-import type { Mission, MissionProduct, Product } from "@/generated/prisma/client";
+import type { Mission, Product } from "@/generated/prisma/client";
 import type { WorkflowStatus } from "@/generated/prisma/enums";
 import { assessRisk, type RiskAssessment } from "@/domain/risk/engine";
 import { optimize } from "@/domain/agents/optimizer";
-import { evaluate, purchaseFingerprint, type PolicySnapshot } from "@/domain/policy/engine";
+import { evaluate, purchaseFingerprint } from "@/domain/policy/engine";
+import { purchaseAmounts, type PurchaseAmounts } from "@/domain/pricing";
+import { snapshotFor } from "@/domain/policy/snapshot";
 import { normalizeCandidate, getProductProvider, type ProductSearch } from "@/domain/providers/product-provider";
 import { DEMO_PRODUCTS } from "@/domain/providers/demo-catalog";
 import { DeterministicAi, type AiProvider } from "@/domain/ai/provider";
 import type { MissionConstraints, ProductCandidate } from "@/domain/types";
-import { allInTotal, formatMoney, spendCap } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 import { appendAudit } from "./audit";
 import { casMission } from "./cas";
 import type { Db, Tx } from "./db";
@@ -90,33 +92,8 @@ function demoBaseline(providerProductId: string): number | null {
   return DEMO_PRODUCTS.find((p) => p.providerProductId === providerProductId)?.baselineUnitPriceMinor ?? null;
 }
 
-export interface PurchaseAmounts {
-  basis: "EXACT" | "CAP";
-  itemTotalMinor: number;
-  shippingMinor: number;
-  taxMinor: number;
-  /** 0 for EXACT. */
-  allowanceMinor: number;
-  /** Exact all-in total, or the spending cap. */
-  totalMinor: number;
-}
-
-/**
- * The single place that turns product data into an authorisable amount.
- * EXACT when shipping and tax are disclosed; otherwise a policy spending CAP (item total +
- * allowance %), or null when the policy disables caps. Throws only on overflow.
- */
-export function purchaseAmounts(
-  product: Pick<Product, "unitPriceMinor" | "shippingMinor" | "taxMinor">,
-  quantity: number,
-  allowancePct: number,
-): PurchaseAmounts | null {
-  const exact = allInTotal({ unitPriceMinor: product.unitPriceMinor, quantity, shippingMinor: product.shippingMinor, taxMinor: product.taxMinor });
-  if (exact) return { basis: "EXACT", ...exact, allowanceMinor: 0 };
-  const cap = spendCap({ unitPriceMinor: product.unitPriceMinor, quantity, allowancePct });
-  if (!cap) return null;
-  return { basis: "CAP", itemTotalMinor: cap.itemTotalMinor, shippingMinor: 0, taxMinor: 0, allowanceMinor: cap.allowanceMinor, totalMinor: cap.totalMinor };
-}
+export { purchaseAmounts, type PurchaseAmounts } from "@/domain/pricing";
+export { snapshotFor } from "@/domain/policy/snapshot";
 
 export function toCandidate(p: Product): ProductCandidate {
   const meta = (p.metadata ?? {}) as { baselineUnitPriceMinor?: number | null; baselineSource?: string | null; inStock?: boolean | null; offerUrl?: string | null };
@@ -145,33 +122,6 @@ export function toCandidate(p: Product): ProductCandidate {
   };
 }
 
-export function snapshotFor(
-  mission: { budgetMinor: number; currency: string; quantity: number; maxRiskScore?: number | null },
-  product: Product,
-  mp: Pick<MissionProduct, "totalMinor" | "riskScore" | "evidenceCoverage" | "riskEvidence" | "amountBasis" | "allowanceMinor">,
-): PolicySnapshot {
-  const evidence = (mp.riskEvidence ?? null) as RiskAssessment | null;
-  return {
-    missionBudgetMinor: mission.budgetMinor,
-    missionCurrency: mission.currency,
-    quantity: mission.quantity,
-    productCurrency: product.currency,
-    unitPriceMinor: product.unitPriceMinor,
-    shippingMinor: product.shippingMinor,
-    taxMinor: product.taxMinor,
-    totalMinor: mp.totalMinor,
-    amountBasis: mp.amountBasis === "CAP" ? "CAP" : mp.totalMinor != null ? "EXACT" : null,
-    allowanceMinor: mp.allowanceMinor,
-    category: product.category,
-    sellerVerification: product.sellerVerificationStatus,
-    riskScore: mp.riskScore,
-    evidenceCoverage: mp.evidenceCoverage,
-    requirementMismatch: evidence ? evidence.requirementMismatch : null,
-    injectionSignals: evidence?.injectionSignals ?? [],
-    missionMaxRiskScore: mission.maxRiskScore ?? null,
-  };
-}
-
 export async function duplicateDetected(
   db: Db | Tx,
   args: { ownerId: string; missionId: string; providerProductId: string; quantity: number; totalMinor: number | null; currency: string; windowHours: number; now: Date },
@@ -191,6 +141,15 @@ export async function duplicateDetected(
   return { detected: count > 0, fingerprint };
 }
 
+/** Real catalogues do not verify sellers; the owner's policy may trust specific retailer domains. */
+export function applyTrustedDomains(cand: ProductCandidate, trusted: Set<string>): ProductCandidate {
+  return !cand.isDemoData && cand.sellerVerificationStatus === "UNKNOWN" && cand.sellerId && trusted.has(cand.sellerId.toLowerCase())
+    ? { ...cand, sellerVerificationStatus: "VERIFIED" }
+    : cand;
+}
+
+export { withTimeout };
+
 // ------------------------------------------------------------------------------------ steps
 
 async function stepScout(db: Db, mission: Mission, c: MissionConstraints, deps: RunnerDeps): Promise<StepResult> {
@@ -203,11 +162,7 @@ async function stepScout(db: Db, mission: Mission, c: MissionConstraints, deps: 
   const ids: string[] = [];
   let capped = 0;
   for (const cand0 of valid) {
-    // Real catalogues do not verify sellers; the owner's policy may trust specific retailer domains.
-    const cand: ProductCandidate =
-      !cand0.isDemoData && cand0.sellerVerificationStatus === "UNKNOWN" && cand0.sellerId && trusted.has(cand0.sellerId.toLowerCase())
-        ? { ...cand0, sellerVerificationStatus: "VERIFIED" }
-        : cand0;
+    const cand = applyTrustedDomains(cand0, trusted);
     const data = {
       title: cand.title,
       description: cand.description,

@@ -80,6 +80,13 @@ enum ApprovalKind {
   APPROVER_APPROVAL
 }
 
+enum OverrideStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
 enum PolicyDecision {
   ALLOW_CHECKOUT
   REQUIRE_APPROVAL
@@ -109,6 +116,8 @@ model User {
   missions  Mission[]
   policies  Policy[]
   approvals Approval[]
+  overrideRequests PolicyOverrideRequest[] @relation("OverrideRequester")
+  overrideReviews  PolicyOverrideRequest[] @relation("OverrideReviewer")
 }
 
 model Mission {
@@ -137,6 +146,12 @@ model Mission {
   recommendationSource  String?
   llmCalls             Int            @default(0)
   failureReason        String?
+  /// Revision lineage: a revised mission is a NEW linked mission; the original is never mutated.
+  revisedFromId        String?
+  revisedFrom          Mission?       @relation("MissionRevision", fields: [revisedFromId], references: [id])
+  revisions            Mission[]      @relation("MissionRevision")
+  /// 0 for an original mission, N for the Nth revision in a lineage.
+  revisionNumber       Int            @default(0)
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
@@ -144,9 +159,11 @@ model Mission {
   approvals Approval[]
   payments  Payment[]
   agentRuns AgentRun[]
+  overrideRequests PolicyOverrideRequest[]
 
   @@index([ownerId, createdAt])
   @@index([status])
+  @@index([revisedFromId])
 }
 
 model Product {
@@ -248,6 +265,38 @@ model Approval {
   // Partial unique index "one ACTIVE approval per mission" is in SQL migration 0002.
   @@index([missionId, status])
   @@index([fingerprint, createdAt])
+}
+
+/// A request for authorised review of a policy decision. It is NOT an authorization: no status
+/// of this row enables checkout or capture, and nothing reads it on the payment path.
+model PolicyOverrideRequest {
+  id                  String         @id @default(cuid())
+  missionId           String
+  mission             Mission        @relation(fields: [missionId], references: [id])
+  /// Mission version and policy version the request was made against.
+  missionVersion      Int
+  policyVersion       Int
+  requestedById       String
+  requestedBy         User           @relation("OverrideRequester", fields: [requestedById], references: [id])
+  /// [{ checkId, label, policyField, offers: [{ productId, title, detail }] }]
+  challengedChecks    Json
+  currentBudgetMinor  Int
+  proposedBudgetMinor Int?
+  currency            String
+  /// Free-form proposed policy/constraint change, validated server-side.
+  proposedChange      String?
+  justification       String
+  status              OverrideStatus @default(PENDING_REVIEW)
+  reviewedById        String?
+  reviewedBy          User?          @relation("OverrideReviewer", fields: [reviewedById], references: [id])
+  reviewNote          String?
+  reviewedAt          DateTime?
+  version             Int            @default(0)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  // Partial unique index "one PENDING_REVIEW request per mission" is in the SQL migration.
+  @@index([missionId, status])
 }
 
 model Payment {

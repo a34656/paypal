@@ -77,7 +77,7 @@ export function ApprovalPanel({
     : [];
 
   return (
-    <div className="space-y-4">
+    <div data-demo-target="approval-panel" className="space-y-4">
       {canDecide && recommended && (
         <div className={cn("rounded-[4px] border border-warning/30 bg-warning/[0.04]", compact ? "p-3" : "p-4")}>
           <div className="flex flex-wrap items-start justify-between gap-2">

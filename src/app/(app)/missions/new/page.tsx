@@ -10,7 +10,7 @@ export default async function NewMissionPage({ searchParams }: PageProps<"/missi
   return (
     <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1fr_280px]">
       <div>
-        <PageHeader eyebrow="Create mission" title="What should the agents buy?" subtitle="AEGIS turns your request into a structured proposal. You confirm it before any agent runs, and a human approves before any money moves." />
+        <PageHeader eyebrow="Create mission" title="What should the agents buy?" subtitle="VANTA turns your request into a structured proposal. You confirm it before any agent runs, and a human approves before any money moves." />
         <Panel>
           <PanelBody className="p-5 md:p-6">
             <MissionComposer initialScenario={scenario} />

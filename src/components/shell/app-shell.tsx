@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import { BarChart3, Bell, Bot, FileClock, LayoutDashboard, ListChecks, Menu, Plus, Receipt, Settings, ShieldHalf, X } from "lucide-react";
 import { useApi } from "@/lib/client/api";
 import { cn } from "@/lib/client/cn";
-import { AegisWordmark } from "./logo";
+import { VantaWordmark } from "./logo";
 import { IdentityMenu, type SessionInfo } from "./identity-menu";
 import { ModeIndicator } from "./mode-indicator";
 
@@ -79,8 +79,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <button className="rounded p-1.5 text-muted hover:text-fg md:hidden" onClick={() => setOpen((o) => !o)} aria-label={open ? "Close navigation" : "Open navigation"} aria-expanded={open}>
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
-        <Link href="/" aria-label="AEGIS home">
-          <AegisWordmark />
+        <Link href="/" aria-label="VANTA home">
+          <VantaWordmark />
         </Link>
         <div className="ml-5 hidden items-center gap-3 lg:flex">
           <span className="h-4 w-px bg-line-strong" aria-hidden />
@@ -103,6 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
       <div className="relative z-10 flex flex-1">
         <nav
+          data-demo-target="app-navigation"
           aria-label="Primary"
           className={cn(
             "fixed inset-y-0 left-0 top-14 z-20 flex w-56 shrink-0 flex-col border-r border-line bg-bg/95 p-3 backdrop-blur-md transition-transform duration-300 ease-[var(--ease-cine)] md:sticky md:top-14 md:h-[calc(100vh-3.5rem)] md:translate-x-0 md:bg-bg/40",

@@ -9,6 +9,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Dev only: lets a browser on another machine load dev assets via this server's LAN / Tailscale address.
+  allowedDevOrigins: ["10.2.103.136", "100.90.114.98", "krs-server-1"],
   // The demo catalogue ships its own images; no remote hosts are allowlisted.
   // Add explicit hosts here if a real product provider is connected (never wildcard).
   images: { remotePatterns: [] },
@@ -17,6 +19,8 @@ const nextConfig: NextConfig = {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],
         as: "*.css",
+        // CSS Modules keep Turbopack's built-in pipeline; `as: "*.css"` would turn them into global CSS.
+        condition: { not: { path: /\.module\.css$/ } },
       },
     },
   },

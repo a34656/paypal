@@ -22,7 +22,7 @@ export function Comparison({ products, recommendedProductId, currency }: { produ
   const [open, setOpen] = useState<string | null>(recommendedProductId);
   if (products.length === 0) return <p className="p-4 text-sm text-muted">No candidates yet. Run the workflow to search the provider.</p>;
   return (
-    <div className="overflow-x-auto">
+    <div data-demo-target="offer-comparison" className="overflow-x-auto">
       <table className="w-full min-w-[820px] text-sm">
         <caption className="sr-only">Candidate offers with all-in totals, trust, evidence coverage and policy decision</caption>
         <thead>

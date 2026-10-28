@@ -1,5 +1,5 @@
-/** Original AEGIS mark: an orbital ring around a faceted core. */
-export function AegisMark({ className = "h-6 w-6" }: { className?: string }) {
+/** Original VANTA mark: an orbital ring around a faceted core (the Trust Core). */
+export function VantaMark({ className = "h-6 w-6" }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden>
       <circle cx="16" cy="16" r="13.2" fill="none" stroke="#6FE3EE" strokeOpacity=".55" strokeWidth="1" />
@@ -11,13 +11,13 @@ export function AegisMark({ className = "h-6 w-6" }: { className?: string }) {
   );
 }
 
-export function AegisWordmark({ subtitle = false }: { subtitle?: boolean }) {
+export function VantaWordmark({ subtitle = false }: { subtitle?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
-      <AegisMark />
+      <VantaMark />
       <span className="flex flex-col leading-none">
-        <span className="font-mono text-[13px] font-medium tracking-[0.42em] text-fg">AEGIS</span>
-        {subtitle && <span className="mt-1 font-mono text-[9px] tracking-[0.24em] text-faint">AI COMMERCE GUARDIAN</span>}
+        <span className="font-mono text-[13px] font-medium tracking-[0.42em] text-fg">VANTA</span>
+        {subtitle && <span className="mt-1 hidden font-mono sm:block text-[9px] tracking-[0.24em] text-faint">AGENTIC COMMERCE TRUST</span>}
       </span>
     </span>
   );

@@ -10,7 +10,7 @@ export function LandingNetwork() {
       height="h-[320px] sm:h-[380px]"
       caption="Idle. Activity appears only when a real mission runs."
       nodeInfo={{
-        core: { title: "AEGIS Core", lines: ["Bounded, resumable step runner", "Can propose — cannot create orders or move money"] },
+        core: { title: "VANTA Core", lines: ["Bounded, resumable step runner", "Can propose — cannot create orders or move money"] },
         scout: { title: "Scout", lines: ["Searches Channel3's live retailer catalogue", "Keeps only what the catalogue states"] },
         risk: { title: "Risk", lines: ["Seller, price, delivery, evidence → 0–100", "Unknown is labelled unknown, never safe"] },
         optimizer: { title: "Optimizer", lines: ["Ranks only offers that pass hard gates", "Weights live in the versioned policy"] },

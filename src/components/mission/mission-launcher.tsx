@@ -7,11 +7,14 @@ import { apiFetch, ApiError } from "@/lib/client/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/field";
 import { ErrorState } from "@/components/ui/states";
+import { useDemoInput } from "@/components/demo/controller";
 
 export function MissionLauncher({ initialScenario, compact = false }: { initialScenario?: string; compact?: boolean }) {
   const router = useRouter();
   const initial = DEMO_SCENARIOS.find((s) => s.id === initialScenario)?.text ?? "";
   const [text, setText] = useState(initial);
+  // Lets the guided walkthrough type through this same setter, so the field and its state never diverge.
+  useDemoInput("purchase-prompt", setText);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
 
@@ -41,6 +44,7 @@ export function MissionLauncher({ initialScenario, compact = false }: { initialS
       </label>
       <Textarea
         id="mission-text"
+        data-demo-target="purchase-prompt"
         value={text}
         onChange={(e) => setText(e.target.value)}
         maxLength={2000}
@@ -58,7 +62,7 @@ export function MissionLauncher({ initialScenario, compact = false }: { initialS
       <ErrorState error={error} />
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] text-muted">The parser only proposes. You confirm every constraint before any agent runs.</p>
-        <Button type="submit" variant="primary" loading={busy} disabled={text.trim().length < 5}>
+        <Button type="submit" variant="primary" data-demo-target="parse-mission" loading={busy} disabled={text.trim().length < 5}>
           <Rocket className="h-4 w-4" aria-hidden />
           Parse mission
         </Button>

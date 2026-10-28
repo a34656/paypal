@@ -88,6 +88,7 @@ export function ConfirmForm({ missionId, proposal, parserSource, onDone, draft }
 
   return (
     <form
+      data-demo-target="confirm-mission"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();

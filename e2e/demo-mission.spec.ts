@@ -89,3 +89,45 @@ test("audit chain verifies", async ({ page }) => {
 test("PayPal Sandbox checkout (only when credentials are configured)", async () => {
   test.skip(true, "Unverified here: no PayPal Sandbox credentials in this environment. E2E forces demo mode and never contacts PayPal.");
 });
+
+test("blocked mission → recovery guidance → confirmed revision is re-evaluated (original untouched)", async ({ page }) => {
+  // The scenario link opens the free-text tab; replace its text with a budget the catalogue cannot meet.
+  await page.goto("/missions/new?scenario=usb-cables");
+  await page.getByLabel("Describe the purchasing mission").fill("Buy 50 USB-C cables, 1m, 60W, for the hardware bench. Budget $100, needed within 10 days.");
+  await page.getByRole("button", { name: "Parse mission" }).click();
+  await page.getByRole("button", { name: "Confirm constraints" }).click();
+  await page.getByTestId("execute-mission").click();
+
+  const panel = page.getByTestId("recovery-panel");
+  await expect(panel.getByRole("heading", { name: "Let's make this purchase work" })).toBeVisible({ timeout: 30_000 });
+  // Lowest identified total is the unbranded offer's spending cap (50 × $2.10 + 15% allowance).
+  await expect(panel.getByText("$120.75 − $100.00 = $20.75")).toBeVisible();
+  await expect(panel.getByTestId("next-action").getByText("Quantity 50 → 9 (41 fewer), budget unchanged.")).toBeVisible();
+
+  // Every failed check, with actual vs permitted values.
+  await panel.getByTestId("explain-checks").click();
+  await expect(panel.getByTestId("failed-checks").getByText("Budget only").first()).toBeVisible();
+
+  // Alternatives come from the demo catalogue and are labelled as such.
+  await panel.getByTestId("find-alternatives").click();
+  await panel.getByRole("button", { name: "Search the provider" }).click();
+  await expect(panel.getByTestId("alternatives").getByText("Demo data").first()).toBeVisible();
+
+  // Apply the suggested budget: old → new is shown, nothing happens until explicitly confirmed.
+  const originalUrl = page.url();
+  await panel.getByTestId("apply-budget").click();
+  const editor = panel.getByTestId("revision-editor");
+  await expect(editor.getByText("$100.00", { exact: true })).toBeVisible();
+  await expect(editor.getByTestId("submit-revision")).toBeDisabled();
+  await editor.getByTestId("confirm-revision").check();
+  await editor.getByTestId("submit-revision").click();
+
+  await expect(page).not.toHaveURL(originalUrl, { timeout: 30_000 });
+  await expect(page.getByTestId("revision-lineage").getByText(/Revision 1 of/)).toBeVisible({ timeout: 30_000 });
+  // The revision passed policy but still needs a human before any order.
+  await expect(page.getByText("Owner authorisation required")).toBeVisible({ timeout: 30_000 });
+
+  await page.goto(originalUrl);
+  await expect(page.getByTestId("revision-lineage").getByText("Revision 1")).toBeVisible();
+  await expect(page.getByTestId("recovery-panel")).toBeVisible();
+});

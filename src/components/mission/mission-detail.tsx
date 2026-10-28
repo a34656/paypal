@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowLeft, GitBranch, Play } from "lucide-react";
 import { reduceEvents } from "@/domain/viewmodel/reducer";
 import { formatMoney } from "@/lib/money";
 import { apiFetch, ApiError, useApi } from "@/lib/client/api";
@@ -19,6 +19,7 @@ import { ApprovalPanel } from "./approval-panel";
 import { CheckoutPanel } from "./checkout-panel";
 import { Timeline } from "./timeline";
 import { ReplayPanel } from "./replay-panel";
+import { RecoveryPanel } from "./recovery/recovery-panel";
 import type { EventsDTO, MissionDetailDTO, MissionProductDTO } from "./types";
 
 const ACTIVE_STATUSES = ["CONFIRMED", "SCOUTING", "SCOUTED", "RISK_ANALYSIS", "OPTIMIZING", "POLICY_EVALUATION"];
@@ -58,7 +59,7 @@ export function MissionDetail({ id, draft }: { id: string; draft?: ComposerDraft
       </div>
     );
 
-  const { mission, products, approvals, payments } = detail.data;
+  const { mission, products, approvals, payments, revisions } = detail.data;
   const currency = mission.currency ?? "USD";
   const recommended = products.find((p) => p.productId === mission.recommendedProductId) ?? null;
   const markers = products.map((p) => ({ id: p.id, label: p.product.title, decision: p.policyDecision, rank: p.recommendationRank, risk: p.riskScore, coverage: p.evidenceCoverage }));
@@ -119,9 +120,31 @@ export function MissionDetail({ id, draft }: { id: string; draft?: ComposerDraft
           </div>
           <div>
             <dt className="tech-label !text-faint">Parser</dt>
-            <dd className="mt-0.5">{mission.parserSource === "llm" ? "Gemini (proposal)" : mission.parserSource ?? "—"}</dd>
+            <dd className="mt-0.5">{mission.parserSource === "llm" ? "Gemini (proposal)" : mission.parserSource === "revision" ? "User revision" : mission.parserSource ?? "—"}</dd>
           </div>
         </dl>
+        {(mission.revisedFromId || revisions.length > 0) && (
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-line bg-bg-2 px-3 py-2 text-xs" data-testid="revision-lineage">
+            <GitBranch className="h-3.5 w-3.5 text-cyan" aria-hidden />
+            {mission.revisedFromId && (
+              <span>
+                Revision {mission.revisionNumber} of{" "}
+                <Link href={`/missions/${mission.revisedFromId}`} className="text-cyan hover:underline">
+                  the original mission
+                </Link>{" "}
+                — re-evaluated from scratch; the original is unchanged.
+              </span>
+            )}
+            {revisions.map((r) => (
+              <span key={r.id} className="flex items-center gap-1.5">
+                <Link href={`/missions/${r.id}`} className="text-cyan hover:underline">
+                  Revision {r.revisionNumber}
+                </Link>
+                <StatusBadge status={r.status} />
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <Panel>
@@ -170,6 +193,8 @@ export function MissionDetail({ id, draft }: { id: string; draft?: ComposerDraft
       )}
 
       {mission.failureReason && <ErrorState error={{ message: mission.failureReason, code: mission.status }} />}
+
+      {mission.status === "BLOCKED" && mission.confirmedConstraints && <RecoveryPanel missionId={mission.id} />}
 
       <div>
         <div className="flex gap-5 border-b border-line" role="tablist" aria-label="Mission view">
@@ -235,7 +260,15 @@ export function MissionDetail({ id, draft }: { id: string; draft?: ComposerDraft
               <span className="text-[11px] text-faint">Precedence: block › require approval › allow. ALLOW never means capture without a human.</span>
             </div>
             {mission.recommendationSummary && <p className="max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-fg/90">{mission.recommendationSummary}</p>}
-            {!recommended && mission.status === "BLOCKED" && <p className="text-sm text-critical">Every candidate was blocked or ineligible. Expand the offers above to see each failing check.</p>}
+            {!recommended && mission.status === "BLOCKED" && (
+              <p className="text-sm text-critical">
+                Every candidate was blocked or ineligible.{" "}
+                <a href="#recovery" className="text-cyan hover:underline">
+                  See how to make this purchase possible
+                </a>
+                .
+              </p>
+            )}
           </PanelBody>
         </Panel>
       )}

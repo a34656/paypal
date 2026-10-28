@@ -31,7 +31,7 @@ export function SceneFallback({ vm, products = [], selected, onSelect }: { vm: M
   const ranked = products.filter((p) => p.rank != null).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
   const others = products.filter((p) => p.rank == null);
   return (
-    <svg viewBox="0 0 640 380" className="h-full w-full" role="img" aria-label={`AEGIS agent network. ${AGENTS.map((a) => `${NODE_META_2D[a].label}: ${states[a]}`).join(", ")}.`}>
+    <svg viewBox="0 0 640 380" className="h-full w-full" role="img" aria-label={`VANTA agent network. ${AGENTS.map((a) => `${NODE_META_2D[a].label}: ${states[a]}`).join(", ")}.`}>
       {chain.map(([a, b]) => (
         <line key={`${a}-${b}`} x1={POS[a][0]} y1={POS[a][1]} x2={POS[b][0]} y2={POS[b][1]} stroke={b === "gate" || a === "gate" ? (gateLit ? "#52D3A3" : "#272C37") : "#272C37"} strokeDasharray={b === "gate" || a === "gate" ? "4 4" : undefined} />
       ))}
@@ -56,7 +56,7 @@ export function SceneFallback({ vm, products = [], selected, onSelect }: { vm: M
         <path d={`M${POS.core[0]} ${POS.core[1] - 16} l14 16 -14 16 -14 -16Z`} fill="rgb(111 227 238 / 0.1)" stroke="#F2EEE6" strokeOpacity="0.7" />
         <circle cx={POS.core[0]} cy={POS.core[1]} r={3.5} fill="#6FE3EE" />
         <text x={POS.core[0]} y={POS.core[1] + 50} textAnchor="middle" fill="#8B93A2" fontSize="9" letterSpacing="2" fontFamily="var(--font-mono)">
-          AEGIS CORE
+          VANTA CORE
         </text>
       </g>
       <g>

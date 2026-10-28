@@ -69,7 +69,7 @@ export function MissionsList({ initialStatus }: { initialStatus: string }) {
         ) : data && data.items.length === 0 ? (
           <EmptyState
             title={q || status ? "No missions match these filters" : "No missions yet"}
-            body="Launch a mission to see AEGIS parse, scout, score, rank and govern a purchase."
+            body="Launch a mission to see VANTA parse, scout, score, rank and govern a purchase."
             action={
               <Link href="/missions/new?scenario=robotics-lab" className="text-sm text-cyan hover:underline">
                 Start the robotics-lab demo mission
