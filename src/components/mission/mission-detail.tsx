@@ -273,7 +273,16 @@ export function MissionDetail({ id, draft }: { id: string; draft?: ComposerDraft
         </Panel>
       )}
 
-      {["AWAITING_APPROVAL", "READY_FOR_CHECKOUT", "COMPLETED", "DENIED", "BLOCKED", "EXPIRED"].includes(mission.status) && mission.decision && (
+      {mission.status === "AWAITING_APPROVAL" && mission.decision && (
+        <Panel>
+          <PanelHeader title="Human approval" subtitle="Awaiting authorized reviewer sign-off before checkout unlocks." />
+          <PanelBody>
+            <ApprovalPanel mission={mission} recommended={recommended} approvals={approvals} isApprover={session?.user.roles.includes("APPROVER") ?? false} onChange={refresh} />
+          </PanelBody>
+        </Panel>
+      )}
+
+      {["READY_FOR_CHECKOUT", "COMPLETED", "DENIED", "BLOCKED", "EXPIRED"].includes(mission.status) && mission.decision && (
         <div className="grid gap-5 lg:grid-cols-2">
           <Panel>
             <PanelHeader title="Human approval" />

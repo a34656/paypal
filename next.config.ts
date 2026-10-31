@@ -13,7 +13,18 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["10.2.103.136", "100.90.114.98", "krs-server-1"],
   // The demo catalogue ships its own images; no remote hosts are allowlisted.
   // Add explicit hosts here if a real product provider is connected (never wildcard).
-  images: { remotePatterns: [] },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "cdn.trychannel3.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.trychannel3.com",
+      },
+    ],
+  },
   turbopack: {
     rules: {
       "*.css": {

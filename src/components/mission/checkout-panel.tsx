@@ -1,7 +1,7 @@
 "use client";
-import { useRef, useState } from "react";
-import { FlaskConical, Lock, RotateCcw, ShieldCheck, Wallet } from "lucide-react";
-import { PayPalButtons, PayPalScriptProvider } from "@paypal/react-paypal-js";
+import Link from "next/link";
+import { useState } from "react";
+import { ExternalLink, FlaskConical, Lock, RotateCcw, ShieldCheck, Wallet } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 import { apiFetch, ApiError, useApi } from "@/lib/client/api";
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,6 @@ export function CheckoutPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const paymentRef = useRef<string | null>(null);
   const [finalAmount, setFinalAmount] = useState("");
   const [releaseReason, setReleaseReason] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
@@ -119,6 +118,29 @@ export function CheckoutPanel({
 
   return (
     <div data-demo-target="checkout-panel" className="space-y-4">
+      {ready && !live && (
+        <div className="rounded-md border border-cyan/40 bg-gradient-to-br from-cyan/[0.08] to-purple/[0.05] p-4 text-xs space-y-3">
+          <div>
+            <p className="font-medium text-fg flex items-center gap-1.5 text-sm">
+              <ShieldCheck className="h-4 w-4 text-cyan" aria-hidden /> VANTA Payment Gateway
+            </p>
+            <p className="text-muted mt-1 leading-relaxed">
+              Purchase authorized. Complete your payment on the dedicated checkout page with verified trust analytics, shader card, and hold-to-confirm authorization.
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-line/60 pt-3">
+            <span className="font-mono text-sm font-semibold text-fg">
+              {recommended ? formatMoney(recommended.totalMinor, currency) : "—"}
+            </span>
+            <Link href={`/checkout/${mission.id}`}>
+              <Button size="sm" variant="primary" className="gap-1.5">
+                <span>Proceed to Checkout</span>
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
       {live && (
         <div className="rounded-md border border-line p-3 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -280,41 +302,6 @@ export function CheckoutPanel({
           )}
         </div>
       )}
-
-      {ready && !simulated && cfg?.publicClientId && (
-        <div className="space-y-2 rounded-md border border-blue/30 bg-blue/5 p-3">
-          <p className="flex items-center gap-2 text-sm font-medium text-blue">
-            <ShieldCheck className="h-4 w-4" aria-hidden /> PayPal Sandbox checkout
-          </p>
-          {cfg.clientIdMismatch && <p className="text-xs text-critical">Configuration warning: browser and server PayPal client IDs differ. Checkout will fail until they match.</p>}
-          <p className="text-xs text-muted">
-            The server creates the order from stored data. After you approve in PayPal, only the payment id is sent back; the server verifies the order and both approval gates before{" "}
-            {holdFlow ? "placing an authorization hold for the spending cap (settled later at the real amount)." : "capturing."}
-          </p>
-          <PayPalScriptProvider options={{ clientId: cfg.publicClientId, currency: mission.currency ?? "USD", intent: holdFlow ? "authorize" : "capture" }}>
-            <PayPalButtons
-              style={{ layout: "vertical", color: "blue", shape: "rect", label: "paypal" }}
-              disabled={busy !== null}
-              createOrder={async () => {
-                const r = await apiFetch<OrderResult>("/api/paypal/orders", { method: "POST", body: { missionId: mission.id } });
-                paymentRef.current = r.paymentId;
-                onChange();
-                return r.providerOrderId;
-              }}
-              onApprove={async () => {
-                // Never send the order id or amount from the browser.
-                if (paymentRef.current) await capture(paymentRef.current);
-              }}
-              onCancel={async () => {
-                if (paymentRef.current) await run("cancel", () => apiFetch("/api/paypal/cancel", { method: "POST", body: { paymentId: paymentRef.current } }));
-              }}
-              onError={(err) => setError(new ApiError(0, "PROVIDER_ERROR", err instanceof Error ? err.message : "PayPal checkout error", null, null))}
-            />
-          </PayPalScriptProvider>
-        </div>
-      )}
-
-      {ready && !simulated && cfg && !cfg.publicClientId && <p className="text-xs text-warning">PayPal is connected on the server but NEXT_PUBLIC_PAYPAL_CLIENT_ID is not set, so the checkout button cannot render.</p>}
 
       {live?.status === "CHECKOUT_PENDING" && !simulated && (
         <Button size="sm" variant="secondary" onClick={() => capture(live.id)} loading={busy === "capture"}>
